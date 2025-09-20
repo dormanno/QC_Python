@@ -3,7 +3,7 @@ from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
 
-import ColumnNames as COL_NAME
+import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 class RollingZQC(QCMethod):
@@ -24,8 +24,8 @@ class RollingZQC(QCMethod):
         )
 
     def fit(self, train_df: pd.DataFrame) -> None:
-        for _, r in train_df[[COL_NAME.TRADE] + self.features + [COL_NAME.DATE]].sort_values(COL_NAME.DATE).iterrows():
-            t = r[COL_NAME.TRADE]
+        for _, r in train_df[[Column.TRADE] + self.features + [Column.DATE]].sort_values(Column.DATE).iterrows():
+            t = r[Column.TRADE]
             for f in self.features:
                 v = float(r[f]) if pd.notna(r[f]) else np.nan
                 if np.isfinite(v):
@@ -34,7 +34,7 @@ class RollingZQC(QCMethod):
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
         vals = []
         for idx, row in day_df.iterrows():
-            t = row[COL_NAME.TRADE]
+            t = row[Column.TRADE]
             z_max = 0.0
             for f in self.features:
                 buf = self.buffers[t][f]
@@ -45,12 +45,12 @@ class RollingZQC(QCMethod):
                     z = (float(row[f]) - mu) / (sd + self._eps) if np.isfinite(sd) and sd > 0 else 0.0
                     z_max = max(z_max, abs(z))
             vals.append(float(np.clip(z_max / self.z_cap, 0.0, 1.0)))
-        return pd.Series(vals, index=day_df.index, name="Rolling_score")
+        return pd.Series(vals, index=day_df.index, name=Column.ROLLING_SCORE)
 
     def update_state(self, day_df: pd.DataFrame) -> None:
         # Append today's values AFTER scoring (no look-ahead)
-        for _, r in day_df[[COL_NAME.TRADE] + self.features].iterrows():
-            t = r[COL_NAME.TRADE]
+        for _, r in day_df[[Column.TRADE] + self.features].iterrows():
+            t = r[Column.TRADE]
             for f in self.features:
                 v = float(r[f]) if pd.notna(r[f]) else np.nan
                 if np.isfinite(v):

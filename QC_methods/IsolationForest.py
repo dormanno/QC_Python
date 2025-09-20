@@ -7,7 +7,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import IsolationForest
 
-import ColumnNames as COL_NAME
+import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 FeatureMode = Literal["time_series", "cross_sectional"]
@@ -64,29 +64,29 @@ class IsolationForestQC(QCMethod):
         - optional RobustScaler in a Pipeline
         """
         base_feats = [
-            COL_NAME.START,
-            *COL_NAME.PNL_SLICES,
-            COL_NAME.TOTAL, "SumSlices", COL_NAME.UNEXPLAINED,
-            COL_NAME.TOTAL_JUMP, COL_NAME.UNEXPLAINED_JUMP
+            Column.START,
+            *Column.PNL_SLICES,
+            Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED,
+            Column.TOTAL_JUMP, Column.UNEXPLAINED_JUMP
         ]
 
         work = df.copy()
 
         if self.per_trade_normalize:
-            level_feats = [COL_NAME.START, COL_NAME.END, *COL_NAME.PNL_SLICES,
-                           COL_NAME.TOTAL, "SumSlices", COL_NAME.UNEXPLAINED]
+            level_feats = [Column.START, Column.END, *Column.PNL_SLICES,
+                           Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED]
             def _norm_group(g: pd.DataFrame) -> pd.DataFrame:
                 denom = g[level_feats].abs().median().replace(0, np.nan)
                 g[level_feats] = g[level_feats].div(denom, axis=1)
                 return g
-            work = work.groupby(COL_NAME.TRADE, group_keys=False).apply(_norm_group)
+            work = work.groupby(Column.TRADE, group_keys=False).apply(_norm_group)
 
-        feat_df = work[[COL_NAME.TRADE, COL_NAME.DATE] + base_feats] \
+        feat_df = work[[Column.TRADE, Column.DATE] + base_feats] \
                     .dropna(how="all", subset=base_feats).copy()
 
         feature_names = base_feats
         X_raw = feat_df[feature_names].astype(float).values
-        ids = feat_df[[COL_NAME.TRADE, COL_NAME.DATE]].copy()
+        ids = feat_df[[Column.TRADE, Column.DATE]].copy()
 
         steps = []
         if self.use_robust_scaler:
@@ -133,7 +133,7 @@ class IsolationForestQC(QCMethod):
         decf = self._clf.decision_function(X)
         ranks = pd.Series(decf).rank(method="average")  # low decf => more anomalous
         intensity = 1.0 - (ranks - 1) / (len(ranks) - 1 + 1e-12)
-        return intensity.rename("IF_score")
+        return intensity.rename(Column.IF_SCORE)
 
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
         """

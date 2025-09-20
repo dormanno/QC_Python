@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 from typing import List
 
-import ReadInput
-import ColumnNames as COL_NAME
+import InputOutput as IO
+import ColumnNames as Column
 
 from QC_methods import IsolationForestQC, RobustZQC, IQRQC, RollingZQC
 from Aggregator import ScoreAggregator
@@ -13,10 +13,8 @@ from Aggregator import ScoreAggregator
 # ----------------------------
 TRAIN_DAYS = 60
 
-
-
 ROBUST_Z_FEATURES = [
-    COL_NAME.START, *COL_NAME.PNL_SLICES, COL_NAME.TOTAL, "SumSlices", COL_NAME.UNEXPLAINED
+    Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
 ]
 IQR_FEATURES = ROBUST_Z_FEATURES
 ROLL_FEATURES = ROBUST_Z_FEATURES
@@ -27,16 +25,16 @@ ROLL_WINDOW = 20
 # ----------------------------
 
 def compute_per_trade_denominators(train_df: pd.DataFrame, level_feats: List[str]) -> pd.DataFrame:
-    den = (train_df.groupby(COL_NAME.TRADE)[level_feats]
+    den = (train_df.groupby(Column.TRADE)[level_feats]
            .apply(lambda g: g.abs().median())
            .reset_index())
-    den.columns = [COL_NAME.TRADE] + [f"{c}__den" for c in level_feats]
+    den.columns = [Column.TRADE] + [f"{c}__den" for c in level_feats]
     return den
 
 def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[str]) -> pd.DataFrame:
     if den is None:
         return df
-    g = df.merge(den, on=COL_NAME.TRADE, how="left")
+    g = df.merge(den, on=Column.TRADE, how="left")
     for c in level_feats:
         dcol = f"{c}__den"
         g[c] = g[c] / g[dcol].replace(0, np.nan)
@@ -49,9 +47,8 @@ def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[st
 if __name__ == "__main__":
     # 1) Ask user for input path
     path = input("Enter full path to PnL_Input.csv: ").strip()
-    fullDataSet = ReadInput.read_calcs_csv(path)
-    fullDataSet = ReadInput.engineer_features(fullDataSet)
-    fullDataSet = fullDataSet.sort_values(COL_NAME.DATE)
+    fullDataSet = IO.read_input(path)
+    fullDataSet = fullDataSet.sort_values(Column.DATE)
 
     print("\n=== 1. prepared data frame first and last rows  ===")
 
@@ -62,16 +59,16 @@ if __name__ == "__main__":
 
     # 2) Split train / OOS by date
     print("\n=== 2. Segregating training and out-of-sample data sets  ===")
-    dates = fullDataSet[COL_NAME.DATE].drop_duplicates().sort_values().to_list()
+    dates = fullDataSet[Column.DATE].drop_duplicates().sort_values().to_list()
     if len(dates) <= TRAIN_DAYS:
         raise ValueError("Not enough data: need > TRAIN_DAYS unique dates for walk-forward.")
 
     cutoff = dates[TRAIN_DAYS - 1]
-    rawTrainDataSet = fullDataSet.loc[fullDataSet[COL_NAME.DATE] <= cutoff].copy()
+    rawTrainDataSet = fullDataSet.loc[fullDataSet[Column.DATE] <= cutoff].copy()
     oos_dates = dates[TRAIN_DAYS:]
 
     # 3) Stabilize scale (optional but recommended)
-    level_feats = [COL_NAME.START, COL_NAME.END, *COL_NAME.PNL_SLICES, COL_NAME.TOTAL, "SumSlices", COL_NAME.UNEXPLAINED]
+    level_feats = [Column.START, Column.END, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED]
     denominators = compute_per_trade_denominators(rawTrainDataSet, level_feats)
     trainDataSet = apply_denominators(rawTrainDataSet, denominators, level_feats)
 
@@ -112,7 +109,7 @@ if __name__ == "__main__":
     print("\n=== 4. Iterating through OOS day-by-day calculating scores...  ===")
     results = []
     for d in oos_dates:
-        day_raw = fullDataSet.loc[fullDataSet[COL_NAME.DATE] == d].copy()
+        day_raw = fullDataSet.loc[fullDataSet[Column.DATE] == d].copy()
         day = apply_denominators(day_raw, denominators, level_feats)  # use TRAIN denominators
 
         # Compute individual scores (each returns a Series aligned to day.index)
@@ -124,12 +121,14 @@ if __name__ == "__main__":
         # Aggregate
         day_scores = pd.concat([ifScore, rzScore, rollScore, iqrScore], axis=1)
         aggregatedScore = aggregator.combine(day_scores)
+        qc_flag = aggregator.map_to_flag(aggregatedScore).to_frame()
 
         out = pd.concat([
-            day[[COL_NAME.TRADE]].reset_index(drop=True),
-            pd.Series([d] * len(day), name=COL_NAME.DATE),
+            day[[Column.TRADE]].reset_index(drop=True),
+            pd.Series([d] * len(day), name=Column.DATE),
             day_scores.reset_index(drop=True),
             aggregatedScore.reset_index(drop=True),
+            qc_flag.reset_index(drop=True),
         ], axis=1)
 
         results.append(out)
@@ -140,11 +139,28 @@ if __name__ == "__main__":
     print(f"Scores for all {len(oos_dates)} dates calculated")
     oos_scores = pd.concat(results, ignore_index=True)
 
+    # print("\n=== 5a. Flag counts (GREEN/AMBER/RED) ===")
+    # print(oos_scores["QC_Flag"].value_counts(sort=False))
+
     # 6) Example report
     print("\n=== 5. OOS 10 worst per-trade (by QC_Aggregated) ===")
-    oos_scores = oos_scores.sort_values(["QC_Aggregated"], ascending=[False])
+    oos_scores = oos_scores.sort_values([Column.AGGREGATED_SCORE], ascending=[False])
 
     with pd.option_context('display.max_columns', None, 'display.width', None):
         print(oos_scores.head(10).to_string(index=False))
+
+    # ---- FULL EXPORT ----
+    out_path = IO.export_full_dataset(
+        full_data_set=fullDataSet,
+        oos_scores=oos_scores,
+        input_path=path,
+        score_cols=Column.DEFAULT_SCORES,
+        # (
+        #     "IF_score", "RobustZ_score", "Rolling_score", "IQR_score",
+        #     "QC_Aggregated", "QC_Flag"
+        # ),
+        suffix="_with_scores"
+    )
+    print(f"\n=== Full export written ===\n{out_path}")
 
 
