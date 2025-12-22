@@ -48,21 +48,14 @@ def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[st
 # Orchestrate
 # ----------------------------
 
-if __name__ == "__main__":
-    # 1) Ask user for input path
-    path = input("Enter full path to PnL_Input.csv: ").strip()
-    fullDataSet = input_handler.read_input(path)
+def run_qc_orchestrator(input_path: str) -> str:
+    """
+    Main QC orchestrator function that processes the input CSV and returns the output path.
+    """
+    fullDataSet = input_handler.read_input(input_path)
     fullDataSet = fullDataSet.sort_values(Column.DATE)
 
-    print("\n=== 1. prepared data frame first and last rows  ===")
-
-    with pd.option_context('display.max_columns', None, 'display.width', None):
-        print(fullDataSet.head(5).to_string(index=False))
-        print("...")
-        print(fullDataSet.tail(5).to_string(index=False))
-
     # 2) Split train / OOS by date
-    print("\n=== 2. Segregating training and out-of-sample data sets  ===")
     dates = fullDataSet[Column.DATE].drop_duplicates().sort_values().to_list()
     if len(dates) <= TRAIN_DAYS:
         raise ValueError("Not enough data: need > TRAIN_DAYS unique dates for walk-forward.")
@@ -76,11 +69,6 @@ if __name__ == "__main__":
     denominators = compute_per_trade_denominators(rawTrainDataSet, level_feats)
     trainDataSet = apply_denominators(rawTrainDataSet, denominators, level_feats)
 
-
-    print(f"First {len(trainDataSet)} rows selected as training set rest will be used as out-of-sample")
-
-    print("\n=== 3. Initializing QC engines...  ===")
-
     # 4) Instantiate QC methods and fit on TRAIN only
     ifqc = IsolationForestQC(
         mode="time_series",
@@ -91,26 +79,19 @@ if __name__ == "__main__":
         contamination=0.01,
     )
     ifqc.fit(trainDataSet)
-    print("Isolation Forest QC initialized")
 
     robustZScoreEngine = RobustZQC(features=ROBUST_Z_FEATURES)
     robustZScoreEngine.fit(trainDataSet)
-    print("Robust Z-Score QC initialized")
 
     interquartileRangeEngine = IQRQC(features=IQR_FEATURES)
     interquartileRangeEngine.fit(trainDataSet)
-    print("Interquartile Range QC initialized")
 
     rollingMeanEngine = RollingZQC(features=ROLL_FEATURES, window=ROLL_WINDOW)
     rollingMeanEngine.fit(trainDataSet)  # warm-up buffers
-    print("Rolling mean QC initialized")
-
-    print("All QC engines initialized")
 
     aggregator = ScoreAggregator(w_if=0.4, w_rz=0.3, w_roll=0.2, w_iqr=0.1)
 
     # 5) Iterate OOS day-by-day
-    print("\n=== 4. Iterating through OOS day-by-day calculating scores...  ===")
     results = []
     for d in oos_dates:
         day_raw = fullDataSet.loc[fullDataSet[Column.DATE] == d].copy()
@@ -140,25 +121,13 @@ if __name__ == "__main__":
         # update rolling state AFTER scoring to avoid look-ahead
         rollingMeanEngine.update_state(day)
 
-    print(f"Scores for all {len(oos_dates)} dates calculated")
     oos_scores = pd.concat(results, ignore_index=True)
 
-    # print("\n=== 5a. Flag counts (GREEN/AMBER/RED) ===")
-    # print(oos_scores["QC_Flag"].value_counts(sort=False))
-
-    # 6) Example report - completed
-    print("\n=== 5. OOS 10 worst per-trade (by QC_Aggregated) ===")
-    oos_scores = oos_scores.sort_values([Column.AGGREGATED_SCORE], ascending=[False])
-
-    with pd.option_context('display.max_columns', None, 'display.width', None):
-        print(oos_scores.head(10).to_string(index=False))
-
-    # 7) Full export - in-progress
-    # ---- FULL EXPORT ----
+    # 7) Full export
     out_path = output_handler.export_full_dataset(
         full_data_set=fullDataSet,
         oos_scores=oos_scores,
-        input_path=path,
+        input_path=input_path,
         score_cols=Column.DEFAULT_SCORES,
         # (
         #     "IF_score", "RobustZ_score", "Rolling_score", "IQR_score",
@@ -166,6 +135,12 @@ if __name__ == "__main__":
         # ),
         suffix="_with_scores"
     )
+    return out_path
+
+if __name__ == "__main__":
+    # 1) Ask user for input path
+    path = input("Enter full path to PnL_Input.csv: ").strip()
+    out_path = run_qc_orchestrator(path)
     print(f"\n=== Full export written ===\n{out_path}")
 
 
