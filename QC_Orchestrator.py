@@ -8,6 +8,10 @@ import ColumnNames as Column
 from QC_methods import IsolationForestQC, RobustZQC, IQRQC, RollingZQC
 from Aggregator import ScoreAggregator
 
+# Create input and output handlers
+input_handler = IO.Input()
+output_handler = IO.Output()
+
 # ----------------------------
 # Config
 # ----------------------------
@@ -47,7 +51,7 @@ def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[st
 if __name__ == "__main__":
     # 1) Ask user for input path
     path = input("Enter full path to PnL_Input.csv: ").strip()
-    fullDataSet = IO.read_input(path)
+    fullDataSet = input_handler.read_input(path)
     fullDataSet = fullDataSet.sort_values(Column.DATE)
 
     print("\n=== 1. prepared data frame first and last rows  ===")
@@ -142,15 +146,16 @@ if __name__ == "__main__":
     # print("\n=== 5a. Flag counts (GREEN/AMBER/RED) ===")
     # print(oos_scores["QC_Flag"].value_counts(sort=False))
 
-    # 6) Example report
+    # 6) Example report - completed
     print("\n=== 5. OOS 10 worst per-trade (by QC_Aggregated) ===")
     oos_scores = oos_scores.sort_values([Column.AGGREGATED_SCORE], ascending=[False])
 
     with pd.option_context('display.max_columns', None, 'display.width', None):
         print(oos_scores.head(10).to_string(index=False))
 
+    # 7) Full export - in-progress
     # ---- FULL EXPORT ----
-    out_path = IO.export_full_dataset(
+    out_path = output_handler.export_full_dataset(
         full_data_set=fullDataSet,
         oos_scores=oos_scores,
         input_path=path,
