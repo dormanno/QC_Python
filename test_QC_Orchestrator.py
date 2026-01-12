@@ -8,14 +8,14 @@ import InputOutput as IO
 
 class TestQCOrchestrator(unittest.TestCase):
     def test_main_function(self):
-        original_input_path = r"C:\Users\dorma\Documents\UEK_Backup\Test\PnL_Input.csv"
-
+        original_input_directory = r"C:\Users\dorma\Documents\UEK_Backup\Test"
+        original_input_file = "PnL_Input2.csv"
         # Create a temporary directory for the test
         with tempfile.TemporaryDirectory() as temp_dir:
             print(f"Temporary directory created at: {temp_dir}")
             # Copy the input file to temp directory
-            temp_input_path = os.path.join(temp_dir, "PnL_Input.csv")
-            shutil.copy2(original_input_path, temp_input_path)
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(original_input_directory, original_input_file), temp_input_path)
 
             # Read raw input to get baseline (before engineering)
             raw_input_df = pd.read_csv(temp_input_path)
@@ -43,6 +43,9 @@ class TestQCOrchestrator(unittest.TestCase):
             # 5. Output file has 11 more columns than input
             expected_cols = input_cols + 11
             self.assertEqual(len(output_df.columns), expected_cols, f"Output columns {len(output_df.columns)} != expected {expected_cols}")
+
+            # Copy output back to original directory for review
+            shutil.copy2(output_path, os.path.join(original_input_directory, os.path.basename(output_path)))
 
 if __name__ == '__main__':
     unittest.main()

@@ -15,7 +15,7 @@ output_handler = IO.Output()
 # ----------------------------
 # Config
 # ----------------------------
-TRAIN_DAYS = 60
+# TRAIN_DAYS is now computed dynamically in run_qc_orchestrator
 
 ROBUST_Z_FEATURES = [
     Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
@@ -57,6 +57,7 @@ def run_qc_orchestrator(input_path: str) -> str:
 
     # 2) Split train / OOS by date
     dates = fullDataSet[Column.DATE].drop_duplicates().sort_values().to_list()
+    TRAIN_DAYS = int(2 / 3 * len(dates))
     if len(dates) <= TRAIN_DAYS:
         raise ValueError("Not enough data: need > TRAIN_DAYS unique dates for walk-forward.")
 

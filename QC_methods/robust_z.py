@@ -28,10 +28,13 @@ class RobustZQC(QCMethod):
         vals = []
         for idx, row in day_df.iterrows():
             t = row[Column.TRADE]
-            med = self.median.loc[t, self.features]
-            mad = self.mad.loc[t, self.features]
-            z = (row[self.features] - med) / (1.4826 * mad + self._eps)
-            z_max = float(np.nanmax(np.abs(z.values.astype(float)))) if len(z) else 0.0
-            vals.append(np.clip(z_max / self.z_cap, 0.0, 1.0))
+            if t not in self.median.index:
+                vals.append(0.0)  # Default score for unseen trades
+            else:
+                med = self.median.loc[t, self.features]
+                mad = self.mad.loc[t, self.features]
+                z = (row[self.features] - med) / (1.4826 * mad + self._eps)
+                z_max = float(np.nanmax(np.abs(z.values.astype(float)))) if len(z) else 0.0
+                vals.append(np.clip(z_max / self.z_cap, 0.0, 1.0))
         s = pd.Series(vals, index=day_df.index, name=Column.ROBUST_Z_SCORE)
         return s

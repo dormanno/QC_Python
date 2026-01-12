@@ -26,12 +26,15 @@ class IQRQC(QCMethod):
         vals = []
         for idx, row in day_df.iterrows():
             t = row[Column.TRADE]
-            q1 = self.q1.loc[t, self.features]
-            q3 = self.q3.loc[t, self.features]
-            iqr = (q3 - q1).replace(0.0, np.nan)
-            lo = q1 - 1.5 * iqr
-            hi = q3 + 1.5 * iqr
-            x = row[self.features].astype(float)
-            viol = ((x < lo) | (x > hi)).astype(float)
-            vals.append(float(np.nanmean(viol.values)) if len(viol) else 0.0)
+            if t not in self.q1.index:
+                vals.append(0.0)  # Default score for unseen trades
+            else:
+                q1 = self.q1.loc[t, self.features]
+                q3 = self.q3.loc[t, self.features]
+                iqr = (q3 - q1).replace(0.0, np.nan)
+                lo = q1 - 1.5 * iqr
+                hi = q3 + 1.5 * iqr
+                x = row[self.features].astype(float)
+                viol = ((x < lo) | (x > hi)).astype(float)
+                vals.append(float(np.nanmean(viol.values)) if len(viol) else 0.0)
         return pd.Series(vals, index=day_df.index, name=Column.IQR_SCORE)

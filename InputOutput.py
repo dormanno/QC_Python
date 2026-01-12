@@ -6,7 +6,9 @@ import os
 
 class Input:
     EXPECTED_COLS = [
-        ColumnName.TRADE, ColumnName.DATE,
+        ColumnName.TRADE, 
+        ColumnName.DATE,
+        ColumnName.TRADE_TYPE,
         ColumnName.START,
         *ColumnName.PNL_SLICES,
         ColumnName.END
@@ -53,33 +55,8 @@ class Input:
             # If a format is provided, use it; otherwise let pandas infer
             df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], format=date_format, errors="raise")
 
-        df = self.engineer_features(df)
-        df = df.sort_values([ColumnName.DATE, ColumnName.TRADE]).reset_index(drop=True)
-        return df
-
-    def read_calcs_csv(self, path: str, date_format: Optional[str] = "%Y%m%d") -> pd.DataFrame:
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Required file not found: {path}")
-
-        """
-        Read the CSV and ensure canonical column names.
-        Adjust the mapping below if your headers differ slightly.
-        """
-        df = pd.read_csv(path)
-
-        # Validate presence
-        missing = [col for col in self.EXPECTED_COLS if col not in df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}\nHave: {list(df.columns)}")
-
-        # Parse date
-        if date_format:
-            df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], format=date_format, errors="coerce")
-        else:
-            df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], errors="coerce")
-
         # Basic sanitization
-        df = df.dropna(subset=[ColumnName.TRADE, ColumnName.DATE]).copy()
+        df = df.dropna(subset=[ColumnName.TRADE, ColumnName.DATE, ColumnName.TRADE_TYPE]).copy()
         df[ColumnName.TRADE] = df[ColumnName.TRADE].astype(str).str.strip()
 
         # Ensure numeric types
@@ -87,7 +64,9 @@ class Input:
         for c in num_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-        return df
+        df = self.engineer_features(df)
+        df = df.sort_values([ColumnName.DATE, ColumnName.TRADE]).reset_index(drop=True)
+        return df    
 
 # ----------------------------------------
 # 3) Feature engineering (unchanged API) - completed

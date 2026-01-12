@@ -35,16 +35,19 @@ class RollingZQC(QCMethod):
         vals = []
         for idx, row in day_df.iterrows():
             t = row[Column.TRADE]
-            z_max = 0.0
-            for f in self.features:
-                buf = self.buffers[t][f]
-                if len(buf) >= 5:
-                    arr = np.asarray(buf, dtype=float)
-                    mu = np.nanmean(arr)
-                    sd = np.nanstd(arr, ddof=1) if len(arr) > 1 else np.nan
-                    z = (float(row[f]) - mu) / (sd + self._eps) if np.isfinite(sd) and sd > 0 else 0.0
-                    z_max = max(z_max, abs(z))
-            vals.append(float(np.clip(z_max / self.z_cap, 0.0, 1.0)))
+            if t not in self.buffers:
+                vals.append(0.0)  # Default score for unseen trades
+            else:
+                z_max = 0.0
+                for f in self.features:
+                    buf = self.buffers[t][f]
+                    if len(buf) >= 5:
+                        arr = np.asarray(buf, dtype=float)
+                        mu = np.nanmean(arr)
+                        sd = np.nanstd(arr, ddof=1) if len(arr) > 1 else np.nan
+                        z = (float(row[f]) - mu) / (sd + self._eps) if np.isfinite(sd) and sd > 0 else 0.0
+                        z_max = max(z_max, abs(z))
+                vals.append(float(np.clip(z_max / self.z_cap, 0.0, 1.0)))
         return pd.Series(vals, index=day_df.index, name=Column.ROLLING_SCORE)
 
     def update_state(self, day_df: pd.DataFrame) -> None:

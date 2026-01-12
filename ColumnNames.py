@@ -1,5 +1,6 @@
-TRADE = "TradeName"
+TRADE = "TradeID"
 DATE = "Date"
+TRADE_TYPE = "TradeType"
 START = "Start_PV"
 END = "End_PV"
 TOTAL = "Total_PnL"
@@ -8,7 +9,7 @@ UNEXPLAINED = "Residual"
 TOTAL_JUMP = "TotalJump"
 UNEXPLAINED_JUMP = "ResidualJump"
 PNL_SLICES = [
-    "Basis_CoF_PnL", "Recovery_Rate_PnL", "Rates_PnL", "Model_PnL", "Basis_CoT_PnL", "Credit_Index_PnL", "Credit_Single_PnL"
+    "Basis_CoF_PnL", "Recovery_Rate_PnL", "Roll_PnL", "Rates_PnL", "Misc_PnL", "Model_PnL", "Mods_PnL", "Credit_Index_PnL", "IndexCorrelation_PnL", "Credit_Single_PnL"
 ]
 QC_AGG = "QC_Aggregated"
 QC_FLAG = "QC_Flag"
