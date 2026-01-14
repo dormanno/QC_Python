@@ -40,6 +40,21 @@ class IsolationForestQC(QCMethod):
                  max_samples: int = 256,
                  contamination: Optional[float] = 0.01,
                  random_state: int = 42):
+        """
+        Initialize IsolationForestQC with model and preprocessing parameters.
+        
+        Args:
+            mode (FeatureMode, optional): Feature extraction mode, either "time_series" or "cross_sectional".
+                                         Defaults to "time_series".
+            per_trade_normalize (bool, optional): Whether to normalize features per trade using median |level|.
+                                                 Defaults to False. Not recommended if orchestrator already normalizes.
+            use_robust_scaler (bool, optional): Whether to apply RobustScaler preprocessing. Defaults to True.
+            n_estimators (int, optional): Number of isolation trees. Defaults to 200.
+            max_samples (int, optional): Maximum samples per tree. Defaults to 256.
+            contamination (Optional[float], optional): Expected contamination rate for the forest.
+                                                       Defaults to 0.01. Can be 'auto'.
+            random_state (int, optional): Random seed for reproducibility. Defaults to 42.
+        """
         self.mode = mode
         self.per_trade_normalize = per_trade_normalize
         self.use_robust_scaler = use_robust_scaler
@@ -58,10 +73,22 @@ class IsolationForestQC(QCMethod):
     # -----------------------------
     def _build_iforest_matrix(self, df: pd.DataFrame) -> _IFInput:
         """
-        Reproduces your original builder:
-        - feature set aligned with ColumnNames.py and ReadInput.engineer_features
-        - optional per-trade normalization by median |level| within each trade
-        - optional RobustScaler in a Pipeline
+        Build the feature matrix for Isolation Forest from raw trade data.
+        
+        Extracts and optionally normalizes features according to mode and preprocessing settings.
+        Applies per-trade normalization (if enabled) by dividing by median |level| per trade.
+        Optionally applies RobustScaler for standardization.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame containing TRADE, DATE columns and feature columns
+                             matching those in ColumnNames.py.
+        
+        Returns:
+            _IFInput: Dataclass containing:
+                - X: Feature matrix (n_samples, n_features) after preprocessing
+                - ids: DataFrame with TRADE and DATE for each sample
+                - feature_names: List of feature names used
+                - X_pipeline: Fitted preprocessing pipeline (e.g., RobustScaler) or None
         """
         base_feats = [
             Column.START,
@@ -105,8 +132,17 @@ class IsolationForestQC(QCMethod):
     # -----------
     def fit(self, train_df: pd.DataFrame) -> None:
         """
-        Fit on TRAIN window only (no leakage).
-        Stores feature_names and fitted pipeline for later OOS transforms.
+        Fit the Isolation Forest model on training data without data leakage.
+        
+        Builds the feature matrix from TRAIN window only, fits the preprocessing pipeline
+        (e.g., RobustScaler), and trains the Isolation Forest classifier. Stores feature names
+        and fitted pipeline for consistent transformation of out-of-sample data.
+        
+        Args:
+            train_df (pd.DataFrame): Training DataFrame containing TRADE, DATE, and feature columns.
+        
+        Returns:
+            None: Stores fitted pipeline, feature names, and classifier as instance variables.
         """
         train_input = self._build_iforest_matrix(train_df)
         self._feature_names = train_input.feature_names
@@ -124,10 +160,20 @@ class IsolationForestQC(QCMethod):
 
     def _score_matrix(self, X: np.ndarray) -> pd.Series:
         """
-        Mirrors your score logic:
-          - decision_function (higher = more normal)
-          - rank to 0..1 'anomaly_intensity' (higher = worse)
-        Returns a pandas Series in [0,1].
+        Score a feature matrix using the fitted Isolation Forest classifier.
+        
+        Converts decision function values (higher = more normal) to anomaly intensity scores
+        ranked in [0,1] range where higher values indicate more anomalous samples.
+        
+        Args:
+            X (np.ndarray): Preprocessed feature matrix of shape (n_samples, n_features).
+        
+        Returns:
+            pd.Series: Series of anomaly intensities in [0,1] with column name IF_SCORE.
+                      Higher values indicate more anomalous samples.
+        
+        Raises:
+            AssertionError: If fit() has not been called (classifier is None).
         """
         assert self._clf is not None
         decf = self._clf.decision_function(X)
@@ -137,8 +183,22 @@ class IsolationForestQC(QCMethod):
 
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
         """
-        Transform and score a single OOS day (rows = trades for that day).
-        Uses the TRAIN-fitted pipeline and feature order.
+        Transform and score a single out-of-sample day using the fitted model.
+        
+        Extracts features from the provided day DataFrame, applies the TRAIN-fitted preprocessing
+        pipeline (e.g., RobustScaler), and computes anomaly intensity scores using the fitted
+        Isolation Forest classifier.
+        
+        Args:
+            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns to score.
+                                  Rows represent trades for a single day.
+        
+        Returns:
+            pd.Series: Series of anomaly intensity scores (values in [0,1]) indexed by day_df's index,
+                      with column name IF_SCORE. Higher values indicate more anomalous trades.
+        
+        Raises:
+            AssertionError: If fit() has not been called (feature_names or classifier are None).
         """
         assert self._feature_names is not None
         X_raw = day_df[self._feature_names].astype(float).values

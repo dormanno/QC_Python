@@ -15,6 +15,14 @@ class RollingZQC(QCMethod):
     """
 
     def __init__(self, features: List[str], window: int = 20, z_cap: float = 6.0):
+        """
+        Initialize RollingZQC with features and rolling window parameters.
+        
+        Args:
+            features (List[str]): List of feature column names to compute rolling Z-scores for.
+            window (int, optional): Size of the rolling window buffer for each trade-feature. Defaults to 20.
+            z_cap (float, optional): Maximum Z-score value used for clipping. Defaults to 6.0.
+        """
         self.features = features
         self.window = window
         self.z_cap = z_cap
@@ -24,6 +32,16 @@ class RollingZQC(QCMethod):
         )
 
     def fit(self, train_df: pd.DataFrame) -> None:
+        """
+        Warm-up rolling buffers with training data, sorted by date.
+        
+        Args:
+            train_df (pd.DataFrame): Training DataFrame containing TRADE, DATE, and feature columns.
+                                    Data is sorted by DATE before processing to maintain temporal order.
+        
+        Returns:
+            None: Populates the rolling buffers for each trade-feature combination with training values.
+        """
         for _, r in train_df[[Column.TRADE] + self.features + [Column.DATE]].sort_values(Column.DATE).iterrows():
             t = r[Column.TRADE]
             for f in self.features:
@@ -32,6 +50,23 @@ class RollingZQC(QCMethod):
                     self.buffers[t][f].append(v)
 
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+        """
+        Compute rolling Z-scores for each row, using the historical window of buffered values.
+        
+        Calculates Z-scores based on mean and std of the rolling window for each trade-feature.
+        Returns the maximum absolute Z-score across features, clipped to [0,1] range.
+        Requires at least 5 values in buffer to compute statistics.
+        
+        Args:
+            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns to score.
+        
+        Returns:
+            pd.Series: Series of normalized rolling Z-scores (values in [0,1]) indexed by day_df's index,
+                      with column name ROLLING_SCORE. Returns 0.0 for unseen trades or insufficient buffer.
+        
+        Notes:
+            - Call update_state() after scoring to add today's values to buffers (prevents look-ahead bias).
+        """
         vals = []
         for idx, row in day_df.iterrows():
             t = row[Column.TRADE]
@@ -51,6 +86,19 @@ class RollingZQC(QCMethod):
         return pd.Series(vals, index=day_df.index, name=Column.ROLLING_SCORE)
 
     def update_state(self, day_df: pd.DataFrame) -> None:
+        """
+        Update rolling buffers by appending today's feature values after scoring.
+        
+        This should be called AFTER score_day() to prevent look-ahead bias. Buffers automatically
+        maintain their fixed size (window) by dropping oldest values when full.
+        
+        Args:
+            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns.
+                                  Only finite values are appended to the buffers.
+        
+        Returns:
+            None: Updates internal buffers in-place.
+        """
         # Append today's values AFTER scoring (no look-ahead)
         for _, r in day_df[[Column.TRADE] + self.features].iterrows():
             t = r[Column.TRADE]
