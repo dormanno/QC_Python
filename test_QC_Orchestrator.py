@@ -3,16 +3,14 @@ import os
 import pandas as pd
 import tempfile
 import shutil
-from QC_Orchestrator import run_qc_orchestrator
+from QC_Orchestrator import QCOrchestrator
 import InputOutput as IO
 import ColumnNames as Column
 
 class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):
         # Define features for QC
-        qc_features = [
-            Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
-        ]
+        qc_features = Column.PNL_FEATURES
         
         original_input_directory = r"C:\Users\dorma\Documents\UEK_Backup\Test"
         original_input_file = "PnL_Input2.csv"
@@ -30,11 +28,12 @@ class TestQCOrchestrator(unittest.TestCase):
 
             # Run the orchestrator
             try:
-                output_path = run_qc_orchestrator(temp_input_path, qc_features)
+                orchestrator = QCOrchestrator(qc_features=qc_features)
+                output_path = orchestrator.run(temp_input_path)
                 # 1. Run succeeded (no exception)
                 self.assertIsInstance(output_path, str)
             except Exception as e:
-                self.fail(f"run_qc_orchestrator raised an exception: {e}")
+                self.fail(f"QCOrchestrator.run() raised an exception: {e}")
 
             # 2. Output file got created
             self.assertTrue(os.path.exists(output_path), f"Output file does not exist: {output_path}")

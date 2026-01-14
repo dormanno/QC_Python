@@ -5,6 +5,98 @@ import ColumnNames as ColumnName
 import os
 
 class Input:
+    """Abstract base class for reading and processing input data.
+    
+    Provides common functionality for reading CSV files and basic data preparation.
+    Subclasses should override EXPECTED_COLS, NUMERIC_COLS, and input_post_process() 
+    for specific data types.
+    """
+    
+    EXPECTED_COLS = []  # To be overridden by subclasses
+    NUMERIC_COLS = []   # To be overridden by subclasses
+    DATE_FORMAT = "%Y%m%d"  # New
+
+    def _assert_expected_columns(self, df: pd.DataFrame) -> None:
+        """Validate that all required columns are present in the DataFrame.
+        
+        Args:
+            df (pd.DataFrame): DataFrame to validate.
+        
+        Raises:
+            ValueError: If any required columns are missing.
+        """
+        missing = [c for c in self.EXPECTED_COLS if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+    def read_input(self, path: str,
+                *,
+                parse_dates: bool = True,
+                date_format: Optional[str] = None) -> pd.DataFrame:
+        """
+        Read dataset from CSV and perform normalization:
+        - parse Date column (optional, default True),
+        - enforce schema,
+        - ensure numeric types,
+        - engineer features (subclass-specific),
+        - sort and reset index.
+
+        Parameters
+        ----------
+        path : str
+            Filesystem path to CSV.
+        parse_dates : bool
+            If True, parse date column with pandas.to_datetime.
+        date_format : Optional[str]
+            Optional explicit str-time-compatible format.
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed DataFrame with engineered features.
+        """
+        df = pd.read_csv(path)
+        df['Date'] = pd.to_datetime(df['Date'], format="%Y%m%d")
+        self._assert_expected_columns(df)
+
+        if parse_dates and ColumnName.DATE in df.columns:
+            df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], format=self.DATE_FORMAT)
+
+        # Basic sanitization
+        df = df.dropna(subset=[ColumnName.TRADE, ColumnName.DATE, ColumnName.TRADE_TYPE]).copy()
+        df[ColumnName.TRADE] = df[ColumnName.TRADE].astype(str).str.strip()
+
+        # Ensure numeric types
+        for c in self.NUMERIC_COLS:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        # Post-process with feature engineering (subclass-specific)
+        df = self.input_post_process(df)
+        
+        # Sort and reset
+        df = df.sort_values([ColumnName.DATE, ColumnName.TRADE]).reset_index(drop=True)
+        return df
+
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process input data with feature engineering.
+        
+        To be implemented by subclasses.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with engineered features.
+        """
+        return df  # Default: return unchanged
+
+
+class PnlInput(Input):
+    """Handles reading and engineering PnL-specific input data.
+    
+    Extends Input class with PnL-specific column expectations and feature engineering.
+    """
+    
     EXPECTED_COLS = [
         ColumnName.TRADE, 
         ColumnName.DATE,
@@ -13,66 +105,22 @@ class Input:
         *ColumnName.PNL_SLICES,
         ColumnName.END
     ]
+    NUMERIC_COLS = ColumnName.PNL_INPUT_FEATURES
 
-    def _assert_expected_columns(self, df: pd.DataFrame) -> None:
-        missing = [c for c in self.EXPECTED_COLS if c not in df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-# ----------------------------------------
-# 2) Input: read + basic preparation
-# ----------------------------------------
-
-    def read_input(self, path: str,
-                *,
-                parse_dates: bool = True,
-                date_format: Optional[str] = None) -> pd.DataFrame:
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process PnL data with feature engineering.
+        
+        Adds ΔPV, SumSlices, Residual = ΔPV - SumSlices, and scale-invariant ratios.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw PnL data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with additional engineered PnL feature columns.
         """
-        Read the raw PnL dataset from CSV and perform minimal normalization:
-        - parse Date column (optional, default True),
-        - enforce schema,
-        - engineer standard features (ΔPV, residuals, ratios),
-        - sort and reset index.
+        return self.engineer_PnL_features(df)
 
-            Parameters
-            ----------
-            path : str
-                Filesystem path to CSV.
-            parse_dates : bool
-                If True, parse COL_NAME.DATE with pandas.to_datetime.
-            date_format : Optional[str]
-                Optional explicit str-time-compatible format.
-
-            Returns
-            -------
-            pd.DataFrame
-            """
-        df = pd.read_csv(path)
-        df['Date'] = pd.to_datetime(df['Date'], format="%Y%m%d")
-        self._assert_expected_columns(df)
-
-        if parse_dates:
-            # If a format is provided, use it; otherwise let pandas infer
-            df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], format=date_format, errors="raise")
-
-        # Basic sanitization
-        df = df.dropna(subset=[ColumnName.TRADE, ColumnName.DATE, ColumnName.TRADE_TYPE]).copy()
-        df[ColumnName.TRADE] = df[ColumnName.TRADE].astype(str).str.strip()
-
-        # Ensure numeric types
-        num_cols = [ColumnName.START, *ColumnName.PNL_SLICES, ColumnName.END]
-        for c in num_cols:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-        df = self.engineer_features(df)
-        df = df.sort_values([ColumnName.DATE, ColumnName.TRADE]).reset_index(drop=True)
-        return df    
-
-# ----------------------------------------
-# 3) Feature engineering (unchanged API) - completed
-# ----------------------------------------
-
-    def engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def engineer_PnL_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds ΔPV, SumSlices, Residual = ΔPV - SumSlices, and scale-invariant ratios.
         Keeps original columns.
@@ -87,9 +135,6 @@ class Input:
         df[ColumnName.UNEXPLAINED_JUMP] = df[ColumnName.UNEXPLAINED] / (df[ColumnName.START].abs() + eps)
         return df
 
-# ----------------------------------------
-# 3) Feature engineering (unchanged API) - completed
-# ----------------------------------------
 
 class Output:
     def attach_scores(self, full_data_set: pd.DataFrame,
@@ -140,16 +185,4 @@ class Output:
         merged = self.attach_scores(full_data_set, oos_scores, score_cols=score_cols)
         out_path = self.derive_output_path(input_path, suffix=suffix, ext=".csv")
 
-        # if 'Date' in full_data_set.columns:
-        #     full_data_set['Date'] = pd.to_datetime(full_data_set['Date'].astype(str), format="%Y%m%d").dt.date
-
         return self.save_csv(merged, out_path)
-
-# ----------------------------------------
-# 4) Output helpers (attach + save) - completed
-# ----------------------------------------
-
-# _DEFAULT_SCORE_COLS: Sequence[str] = (
-#     "IF_score", "RobustZ_score", "Rolling_score", "IQR_score",
-#     "QC_Aggregated", "QC_Flag"
-# )

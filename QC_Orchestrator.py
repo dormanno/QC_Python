@@ -8,147 +8,188 @@ import ColumnNames as Column
 from QC_methods import IsolationForestQC, RobustZQC, IQRQC, RollingZQC
 from Aggregator import ScoreAggregator
 
-# Create input and output handlers
-input_handler = IO.Input()
-output_handler = IO.Output()
 
-# ----------------------------
-# Config
-# ----------------------------
-# TRAIN_DAYS is now computed dynamically in run_qc_orchestrator
-
-QC_FEATURES = [
-    Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
-]
-ROLL_WINDOW = 20
-
-# ----------------------------
-# Normalization across trades
-# ----------------------------
-
-def compute_per_trade_denominators(train_df: pd.DataFrame, level_feats: List[str]) -> pd.DataFrame:
-    den = (train_df.groupby(Column.TRADE)[level_feats]
-           .apply(lambda g: g.abs().median())
-           .reset_index())
-    den.columns = [Column.TRADE] + [f"{c}__den" for c in level_feats]
-    return den
-
-def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[str]) -> pd.DataFrame:
-    if den is None:
-        return df
-    g = df.merge(den, on=Column.TRADE, how="left")
-    for c in level_feats:
-        dcol = f"{c}__den"
-        g[c] = g[c] / g[dcol].replace(0, np.nan)
-    return g.drop(columns=[f"{c}__den" for c in level_feats])
-
-# ----------------------------
-# Orchestrate
-# ----------------------------
-
-def run_qc_orchestrator(input_path: str, qc_features: List[str]) -> str:
-    """
-    Main QC orchestrator function that processes the input CSV and returns the output path.
+class QCOrchestrator:
+    """Orchestrates the walk-forward QC evaluation pipeline.
     
-    Args:
-        input_path (str): Path to the input CSV file.
-        qc_features (List[str]): List of feature column names to use for QC scoring.
-    
-    Returns:
-        str: Path to the output file with QC scores.
+    Manages QC method instantiation, training, scoring, and aggregation.
     """
-    fullDataSet = input_handler.read_input(input_path)
-    fullDataSet = fullDataSet.sort_values(Column.DATE)
+    
+    # Default configuration
+    ROLL_WINDOW = 20
+    TRAIN_RATIO = 2 / 3  # Use 2/3 of dates for training
+    
+    def __init__(self, qc_features: List[str], roll_window: int = None):
+        """Initialize the orchestrator with QC features and optional overrides.
+        
+        Args:
+            qc_features (List[str]): Required. Features to use for QC scoring.
+            roll_window (int, optional): Rolling window size. Defaults to ROLL_WINDOW.
+        """
+        self.qc_features = qc_features
+        self.roll_window = roll_window or self.ROLL_WINDOW
+        self.input_handler = IO.PnlInput()
+        self.output_handler = IO.Output()
 
-    # 2) Split train / OOS by date
-    dates = fullDataSet[Column.DATE].drop_duplicates().sort_values().to_list()
-    TRAIN_DAYS = int(2 / 3 * len(dates))
-    if len(dates) <= TRAIN_DAYS:
-        raise ValueError("Not enough data: need > TRAIN_DAYS unique dates for walk-forward.")
+    def compute_per_trade_denominators(self, train_df: pd.DataFrame) -> pd.DataFrame:
+        """Compute per-trade median absolute denominators for normalization.
+        
+        Args:
+            train_df (pd.DataFrame): Training data.
+        
+        Returns:
+            pd.DataFrame: Denominators by trade and feature.
+        """
+        den = (train_df.groupby(Column.TRADE)[self.qc_features]
+               .apply(lambda g: g.abs().median())
+               .reset_index())
+        den.columns = [Column.TRADE] + [f"{c}__den" for c in self.qc_features]
+        return den
 
-    cutoff = dates[TRAIN_DAYS - 1]
-    rawTrainDataSet = fullDataSet.loc[fullDataSet[Column.DATE] <= cutoff].copy()
-    oos_dates = dates[TRAIN_DAYS:]
+    def apply_denominators(self, df: pd.DataFrame, den: pd.DataFrame) -> pd.DataFrame:
+        """Apply per-trade denominators to normalize features.
+        
+        Args:
+            df (pd.DataFrame): Data to normalize.
+            den (pd.DataFrame): Denominators.
+        
+        Returns:
+            pd.DataFrame: Normalized data.
+        """
+        if den is None:
+            return df
+        g = df.merge(den, on=Column.TRADE, how="left")
+        for c in self.qc_features:
+            dcol = f"{c}__den"
+            g[c] = g[c] / g[dcol].replace(0, np.nan)
+        return g.drop(columns=[f"{c}__den" for c in self.qc_features])
 
-    # 3) Stabilize scale (optional but recommended)
-    denominators = compute_per_trade_denominators(rawTrainDataSet, qc_features)
-    trainDataSet = apply_denominators(rawTrainDataSet, denominators, qc_features)
+    def run(self, input_path: str) -> str:
+        """Run the complete QC orchestration pipeline.
+        
+        Performs walk-forward evaluation: trains on first 2/3 of dates,
+        then scores remaining dates day-by-day.
+        
+        Args:
+            input_path (str): Path to input CSV file.
+        
+        Returns:
+            str: Path to output file with QC scores.
+        
+        Raises:
+            ValueError: If insufficient data for train/OOS split.
+        """
+        # 1) Read and sort data
+        fullDataSet = self.input_handler.read_input(input_path)
+        fullDataSet = fullDataSet.sort_values(Column.DATE)
 
-    # 4) Instantiate QC methods and fit on TRAIN only
-    ifqc = IsolationForestQC(
-        base_feats=qc_features,
-        identity_column=Column.TRADE,
-        temporal_column=Column.DATE,
-        mode="time_series",
-        per_trade_normalize=False,  # we normalize in the orchestrator using TRAIN denominators
-        use_robust_scaler=True,
-        n_estimators=200,
-        max_samples=256,
-        contamination=0.01,
-    )
-    ifqc.fit(trainDataSet)
+        # 2) Split train / OOS by date
+        dates = fullDataSet[Column.DATE].drop_duplicates().sort_values().to_list()
+        train_days = int(self.TRAIN_RATIO * len(dates))
+        if len(dates) <= train_days:
+            raise ValueError("Not enough data: need > TRAIN_DAYS unique dates for walk-forward.")
 
-    robustZScoreEngine = RobustZQC(features=qc_features, identity_column=Column.TRADE)
-    robustZScoreEngine.fit(trainDataSet)
+        cutoff = dates[train_days - 1]
+        rawTrainDataSet = fullDataSet.loc[fullDataSet[Column.DATE] <= cutoff].copy()
+        oos_dates = dates[train_days:]
 
-    interquartileRangeEngine = IQRQC(features=qc_features, identity_column=Column.TRADE)
-    interquartileRangeEngine.fit(trainDataSet)
+        # 3) Stabilize scale using TRAIN denominators
+        denominators = self.compute_per_trade_denominators(rawTrainDataSet)
+        trainDataSet = self.apply_denominators(rawTrainDataSet, denominators)
 
-    rollingMeanEngine = RollingZQC(features=qc_features, identity_column=Column.TRADE, temporal_column=Column.DATE, window=ROLL_WINDOW)
-    rollingMeanEngine.fit(trainDataSet)  # warm-up buffers
+        # 4) Instantiate and fit QC methods on TRAIN
+        qc_methods = self._instantiate_qc_methods()
+        for method in qc_methods.values():
+            method.fit(trainDataSet)
 
-    aggregator = ScoreAggregator(w_if=0.4, w_rz=0.3, w_roll=0.2, w_iqr=0.1)
+        aggregator = ScoreAggregator(w_if=0.4, w_rz=0.3, w_roll=0.2, w_iqr=0.1)
 
-    # 5) Iterate OOS day-by-day
-    results = []
-    for d in oos_dates:
-        day_raw = fullDataSet.loc[fullDataSet[Column.DATE] == d].copy()
-        day = apply_denominators(day_raw, denominators, qc_features)  # use TRAIN denominators
+        # 5) Iterate OOS day-by-day
+        results = []
+        for d in oos_dates:
+            day_raw = fullDataSet.loc[fullDataSet[Column.DATE] == d].copy()
+            day = self.apply_denominators(day_raw, denominators)
 
-        # Compute individual scores (each returns a Series aligned to day.index)
-        ifScore = ifqc.score_day(day)
-        rzScore = robustZScoreEngine.score_day(day)
-        iqrScore = interquartileRangeEngine.score_day(day)
-        rollScore = rollingMeanEngine.score_day(day)
+            # Score with each method
+            scores = {
+                'IF_score': qc_methods['ifqc'].score_day(day),
+                'RobustZ_score': qc_methods['robustZ'].score_day(day),
+                'IQR_score': qc_methods['iqr'].score_day(day),
+                'Rolling_score': qc_methods['rolling'].score_day(day),
+            }
 
-        # Aggregate
-        day_scores = pd.concat([ifScore, rzScore, rollScore, iqrScore], axis=1)
-        aggregatedScore = aggregator.combine(day_scores)
-        qc_flag = aggregator.map_to_flag(aggregatedScore).to_frame()
+            # Aggregate scores
+            day_scores = pd.concat(scores.values(), axis=1)
+            day_scores.columns = scores.keys()
+            aggregatedScore = aggregator.combine(day_scores)
+            qc_flag = aggregator.map_to_flag(aggregatedScore).to_frame()
 
-        out = pd.concat([
-            day[[Column.TRADE]].reset_index(drop=True),
-            pd.Series([d] * len(day), name=Column.DATE),
-            day_scores.reset_index(drop=True),
-            aggregatedScore.reset_index(drop=True),
-            qc_flag.reset_index(drop=True),
-        ], axis=1)
+            out = pd.concat([
+                day[[Column.TRADE]].reset_index(drop=True),
+                pd.Series([d] * len(day), name=Column.DATE),
+                day_scores.reset_index(drop=True),
+                aggregatedScore.reset_index(drop=True),
+                qc_flag.reset_index(drop=True),
+            ], axis=1)
 
-        results.append(out)
+            results.append(out)
 
-        # update rolling state AFTER scoring to avoid look-ahead
-        rollingMeanEngine.update_state(day)
+            # Update rolling state AFTER scoring (avoid look-ahead)
+            qc_methods['rolling'].update_state(day)
 
-    oos_scores = pd.concat(results, ignore_index=True)
+        oos_scores = pd.concat(results, ignore_index=True)
 
-    # 7) Full export
-    out_path = output_handler.export_full_dataset(
-        full_data_set=fullDataSet,
-        oos_scores=oos_scores,
-        input_path=input_path,
-        score_cols=Column.DEFAULT_SCORES,
-        # (
-        #     "IF_score", "RobustZ_score", "Rolling_score", "IQR_score",
-        #     "QC_Aggregated", "QC_Flag"
-        # ),
-        suffix="_with_scores"
-    )
-    return out_path
+        # 6) Export full dataset with scores
+        out_path = self.output_handler.export_full_dataset(
+            full_data_set=fullDataSet,
+            oos_scores=oos_scores,
+            input_path=input_path,
+            score_cols=Column.DEFAULT_SCORES,
+            suffix="_with_scores"
+        )
+        return out_path
+
+    def _instantiate_qc_methods(self) -> dict:
+        """Instantiate all QC scoring methods.
+        
+        Returns:
+            dict: Dictionary of QC method instances keyed by name.
+        """
+        ifqc = IsolationForestQC(
+            base_feats=self.qc_features,
+            identity_column=Column.TRADE,
+            temporal_column=Column.DATE,
+            mode="time_series",
+            per_trade_normalize=False,
+            use_robust_scaler=True,
+            n_estimators=200,
+            max_samples=256,
+            contamination=0.01,
+        )
+
+        robustZ = RobustZQC(features=self.qc_features, identity_column=Column.TRADE)
+        iqr = IQRQC(features=self.qc_features, identity_column=Column.TRADE)
+        rolling = RollingZQC(
+            features=self.qc_features,
+            identity_column=Column.TRADE,
+            temporal_column=Column.DATE,
+            window=self.roll_window
+        )
+
+        return {
+            'ifqc': ifqc,
+            'robustZ': robustZ,
+            'iqr': iqr,
+            'rolling': rolling,
+        }
 
 if __name__ == "__main__":
-    # 1) Ask user for input path
+    # Interactive entry point
+    from ColumnNames import START, PNL_SLICES, TOTAL, EXPLAINED, UNEXPLAINED
+    qc_features = [START, *PNL_SLICES, TOTAL, EXPLAINED, UNEXPLAINED]
     path = input("Enter full path to PnL_Input.csv: ").strip()
-    out_path = run_qc_orchestrator(path, QC_FEATURES)
+    orchestrator = QCOrchestrator(qc_features=qc_features)
+    out_path = orchestrator.run(path)
     print(f"\n=== Full export written ===\n{out_path}")
 
 
