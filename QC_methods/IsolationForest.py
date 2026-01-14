@@ -33,6 +33,9 @@ class IsolationForestQC(QCMethod):
     """
 
     def __init__(self,
+                 base_feats: List[str],
+                 identity_column: str,
+                 temporal_column: str,
                  mode: FeatureMode = "time_series",
                  per_trade_normalize: bool = False,
                  use_robust_scaler: bool = True,
@@ -44,6 +47,9 @@ class IsolationForestQC(QCMethod):
         Initialize IsolationForestQC with model and preprocessing parameters.
         
         Args:
+            base_feats (List[str]): List of feature column names to extract from the DataFrame.
+            identity_column (str): Column name for trade/entity identifier.
+            temporal_column (str): Column name for date/temporal identifier.
             mode (FeatureMode, optional): Feature extraction mode, either "time_series" or "cross_sectional".
                                          Defaults to "time_series".
             per_trade_normalize (bool, optional): Whether to normalize features per trade using median |level|.
@@ -55,6 +61,9 @@ class IsolationForestQC(QCMethod):
                                                        Defaults to 0.01. Can be 'auto'.
             random_state (int, optional): Random seed for reproducibility. Defaults to 42.
         """
+        self.base_feats = base_feats
+        self.identity_column = identity_column
+        self.temporal_column = temporal_column
         self.mode = mode
         self.per_trade_normalize = per_trade_normalize
         self.use_robust_scaler = use_robust_scaler
@@ -90,30 +99,21 @@ class IsolationForestQC(QCMethod):
                 - feature_names: List of feature names used
                 - X_pipeline: Fitted preprocessing pipeline (e.g., RobustScaler) or None
         """
-        base_feats = [
-            Column.START,
-            *Column.PNL_SLICES,
-            Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED,
-            Column.TOTAL_JUMP, Column.UNEXPLAINED_JUMP
-        ]
-
         work = df.copy()
 
-        if self.per_trade_normalize:
-            level_feats = [Column.START, Column.END, *Column.PNL_SLICES,
-                           Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED]
+        if self.per_trade_normalize:            
             def _norm_group(g: pd.DataFrame) -> pd.DataFrame:
-                denom = g[level_feats].abs().median().replace(0, np.nan)
-                g[level_feats] = g[level_feats].div(denom, axis=1)
+                denom = g[self.base_feats].abs().median().replace(0, np.nan)
+                g[self.base_feats] = g[self.base_feats].div(denom, axis=1)
                 return g
-            work = work.groupby(Column.TRADE, group_keys=False).apply(_norm_group)
+            work = work.groupby(self.identity_column, group_keys=False).apply(_norm_group)
 
-        feat_df = work[[Column.TRADE, Column.DATE] + base_feats] \
-                    .dropna(how="all", subset=base_feats).copy()
+        feat_df = work[[self.identity_column, self.temporal_column] + self.base_feats] \
+                    .dropna(how="all", subset=self.base_feats).copy()
 
-        feature_names = base_feats
+        feature_names = self.base_feats
         X_raw = feat_df[feature_names].astype(float).values
-        ids = feat_df[[Column.TRADE, Column.DATE]].copy()
+        ids = feat_df[[self.identity_column, self.temporal_column]].copy()
 
         steps = []
         if self.use_robust_scaler:

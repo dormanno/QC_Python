@@ -14,16 +14,20 @@ class RollingZQC(QCMethod):
     After scoring, call update_state(day_df) to append today's values to buffers.
     """
 
-    def __init__(self, features: List[str], window: int = 20, z_cap: float = 6.0):
+    def __init__(self, features: List[str], identity_column: str, temporal_column: str, window: int = 20, z_cap: float = 6.0):
         """
         Initialize RollingZQC with features and rolling window parameters.
         
         Args:
             features (List[str]): List of feature column names to compute rolling Z-scores for.
+            identity_column (str): Column name for trade/entity identifier.
+            temporal_column (str): Column name for date/temporal identifier.
             window (int, optional): Size of the rolling window buffer for each trade-feature. Defaults to 20.
             z_cap (float, optional): Maximum Z-score value used for clipping. Defaults to 6.0.
         """
         self.features = features
+        self.identity_column = identity_column
+        self.temporal_column = temporal_column
         self.window = window
         self.z_cap = z_cap
         self._eps = 1e-8
@@ -33,17 +37,17 @@ class RollingZQC(QCMethod):
 
     def fit(self, train_df: pd.DataFrame) -> None:
         """
-        Warm-up rolling buffers with training data, sorted by date.
+        Warm-up rolling buffers with training data, sorted by temporal column.
         
         Args:
-            train_df (pd.DataFrame): Training DataFrame containing TRADE, DATE, and feature columns.
-                                    Data is sorted by DATE before processing to maintain temporal order.
+            train_df (pd.DataFrame): Training DataFrame containing identity_column, temporal_column, and feature columns.
+                                    Data is sorted by temporal_column before processing to maintain temporal order.
         
         Returns:
             None: Populates the rolling buffers for each trade-feature combination with training values.
         """
-        for _, r in train_df[[Column.TRADE] + self.features + [Column.DATE]].sort_values(Column.DATE).iterrows():
-            t = r[Column.TRADE]
+        for _, r in train_df[[self.identity_column] + self.features + [self.temporal_column]].sort_values(self.temporal_column).iterrows():
+            t = r[self.identity_column]
             for f in self.features:
                 v = float(r[f]) if pd.notna(r[f]) else np.nan
                 if np.isfinite(v):
@@ -58,7 +62,7 @@ class RollingZQC(QCMethod):
         Requires at least 5 values in buffer to compute statistics.
         
         Args:
-            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns to score.
+            day_df (pd.DataFrame): DataFrame containing identity_column and feature columns to score.
         
         Returns:
             pd.Series: Series of normalized rolling Z-scores (values in [0,1]) indexed by day_df's index,
@@ -69,7 +73,7 @@ class RollingZQC(QCMethod):
         """
         vals = []
         for idx, row in day_df.iterrows():
-            t = row[Column.TRADE]
+            t = row[self.identity_column]
             if t not in self.buffers:
                 vals.append(0.0)  # Default score for unseen trades
             else:
@@ -93,15 +97,15 @@ class RollingZQC(QCMethod):
         maintain their fixed size (window) by dropping oldest values when full.
         
         Args:
-            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns.
+            day_df (pd.DataFrame): DataFrame containing identity_column and feature columns.
                                   Only finite values are appended to the buffers.
         
         Returns:
             None: Updates internal buffers in-place.
         """
         # Append today's values AFTER scoring (no look-ahead)
-        for _, r in day_df[[Column.TRADE] + self.features].iterrows():
-            t = r[Column.TRADE]
+        for _, r in day_df[[self.identity_column] + self.features].iterrows():
+            t = r[self.identity_column]
             for f in self.features:
                 v = float(r[f]) if pd.notna(r[f]) else np.nan
                 if np.isfinite(v):

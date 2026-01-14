@@ -5,9 +5,15 @@ import tempfile
 import shutil
 from QC_Orchestrator import run_qc_orchestrator
 import InputOutput as IO
+import ColumnNames as Column
 
 class TestQCOrchestrator(unittest.TestCase):
-    def test_main_function(self):
+    def test_QC_PnL(self):
+        # Define features for QC
+        qc_features = [
+            Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
+        ]
+        
         original_input_directory = r"C:\Users\dorma\Documents\UEK_Backup\Test"
         original_input_file = "PnL_Input2.csv"
         # Create a temporary directory for the test
@@ -24,7 +30,7 @@ class TestQCOrchestrator(unittest.TestCase):
 
             # Run the orchestrator
             try:
-                output_path = run_qc_orchestrator(temp_input_path)
+                output_path = run_qc_orchestrator(temp_input_path, qc_features)
                 # 1. Run succeeded (no exception)
                 self.assertIsInstance(output_path, str)
             except Exception as e:

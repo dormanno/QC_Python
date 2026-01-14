@@ -11,15 +11,17 @@ class RobustZQC(QCMethod):
     Score = max_abs_robust_z over selected features, clipped at z_cap and mapped to [0,1].
     """
 
-    def __init__(self, features: List[str], z_cap: float = 6.0):
+    def __init__(self, features: List[str], identity_column: str, z_cap: float = 6.0):
         """
         Initialize RobustZQC with specified features and z-score cap.
         
         Args:
             features (List[str]): List of feature column names to use for robust Z-score calculation.
+            identity_column (str): Column name for trade/entity identifier.
             z_cap (float, optional): Maximum Z-score value used for clipping. Defaults to 6.0.
         """
         self.features = features
+        self.identity_column = identity_column
         self.z_cap = z_cap
         self.median: pd.DataFrame | None = None
         self.mad: pd.DataFrame | None = None
@@ -30,13 +32,13 @@ class RobustZQC(QCMethod):
         Fit the RobustZQC model by computing median and MAD (Median Absolute Deviation) for each trade.
         
         Args:
-            train_df (pd.DataFrame): Training DataFrame containing TRADE column and feature columns.
+            train_df (pd.DataFrame): Training DataFrame containing identity_column and feature columns.
                                     Computes per-trade median and MAD for the specified features.
         
         Returns:
             None: Stores computed median and mad as instance variables.
         """
-        g = train_df.groupby(Column.TRADE)
+        g = train_df.groupby(self.identity_column)
         self.median = g[self.features].median()
         self.mad = g[self.features].apply(lambda x: (x - x.median()).abs().median()).replace(0.0, np.nan)
 
@@ -48,7 +50,7 @@ class RobustZQC(QCMethod):
         The robust Z-score is computed as max(|Z|) across all features, clipped to [0,1] range.
         
         Args:
-            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns to score.
+            day_df (pd.DataFrame): DataFrame containing identity_column and feature columns to score.
         
         Returns:
             pd.Series: Series of normalized robust Z-scores (values in [0,1]) indexed by day_df's index,
@@ -60,7 +62,7 @@ class RobustZQC(QCMethod):
         assert self.median is not None and self.mad is not None
         vals = []
         for idx, row in day_df.iterrows():
-            t = row[Column.TRADE]
+            t = row[self.identity_column]
             if t not in self.median.index:
                 vals.append(0.0)  # Default score for unseen trades
             else:

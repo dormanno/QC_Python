@@ -11,14 +11,16 @@ class IQRQC(QCMethod):
       Score = fraction of features outside [Q1-1.5*IQR, Q3+1.5*IQR] in [0,1].
     """
 
-    def __init__(self, features: List[str]):
+    def __init__(self, features: List[str], identity_column: str):
         """
         Initialize IQRQC with specified features for IQR-based outlier detection.
         
         Args:
             features (List[str]): List of feature column names to use for IQR-based scoring.
+            identity_column (str): Column name for trade/entity identifier.
         """
         self.features = features
+        self.identity_column = identity_column
         self.q1: pd.DataFrame | None = None
         self.q3: pd.DataFrame | None = None
 
@@ -27,13 +29,13 @@ class IQRQC(QCMethod):
         Fit the IQR model by computing Q1 and Q3 (25th and 75th percentiles) per trade.
         
         Args:
-            train_df (pd.DataFrame): Training DataFrame containing TRADE column and feature columns.
+            train_df (pd.DataFrame): Training DataFrame containing identity_column and feature columns.
                                     Computes quartiles per trade for the specified features.
         
         Returns:
             None: Stores computed Q1 and Q3 as instance variables.
         """
-        g = train_df.groupby(Column.TRADE)
+        g = train_df.groupby(self.identity_column)
         self.q1 = g[self.features].quantile(0.25)
         self.q3 = g[self.features].quantile(0.75)
 
@@ -45,7 +47,7 @@ class IQRQC(QCMethod):
         (standard Tukey fence definition for outliers).
         
         Args:
-            day_df (pd.DataFrame): DataFrame containing TRADE column and feature columns to score.
+            day_df (pd.DataFrame): DataFrame containing identity_column and feature columns to score.
         
         Returns:
             pd.Series: Series of outlier scores (values in [0,1]) indexed by day_df's index,
@@ -58,7 +60,7 @@ class IQRQC(QCMethod):
         assert self.q1 is not None and self.q3 is not None
         vals = []
         for idx, row in day_df.iterrows():
-            t = row[Column.TRADE]
+            t = row[self.identity_column]
             if t not in self.q1.index:
                 vals.append(0.0)  # Default score for unseen trades
             else:

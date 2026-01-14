@@ -17,11 +17,9 @@ output_handler = IO.Output()
 # ----------------------------
 # TRAIN_DAYS is now computed dynamically in run_qc_orchestrator
 
-ROBUST_Z_FEATURES = [
+QC_FEATURES = [
     Column.START, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED
 ]
-IQR_FEATURES = ROBUST_Z_FEATURES
-ROLL_FEATURES = ROBUST_Z_FEATURES
 ROLL_WINDOW = 20
 
 # ----------------------------
@@ -48,9 +46,16 @@ def apply_denominators(df: pd.DataFrame, den: pd.DataFrame, level_feats: List[st
 # Orchestrate
 # ----------------------------
 
-def run_qc_orchestrator(input_path: str) -> str:
+def run_qc_orchestrator(input_path: str, qc_features: List[str]) -> str:
     """
     Main QC orchestrator function that processes the input CSV and returns the output path.
+    
+    Args:
+        input_path (str): Path to the input CSV file.
+        qc_features (List[str]): List of feature column names to use for QC scoring.
+    
+    Returns:
+        str: Path to the output file with QC scores.
     """
     fullDataSet = input_handler.read_input(input_path)
     fullDataSet = fullDataSet.sort_values(Column.DATE)
@@ -66,12 +71,14 @@ def run_qc_orchestrator(input_path: str) -> str:
     oos_dates = dates[TRAIN_DAYS:]
 
     # 3) Stabilize scale (optional but recommended)
-    level_feats = [Column.START, Column.END, *Column.PNL_SLICES, Column.TOTAL, Column.EXPLAINED, Column.UNEXPLAINED]
-    denominators = compute_per_trade_denominators(rawTrainDataSet, level_feats)
-    trainDataSet = apply_denominators(rawTrainDataSet, denominators, level_feats)
+    denominators = compute_per_trade_denominators(rawTrainDataSet, qc_features)
+    trainDataSet = apply_denominators(rawTrainDataSet, denominators, qc_features)
 
     # 4) Instantiate QC methods and fit on TRAIN only
     ifqc = IsolationForestQC(
+        base_feats=qc_features,
+        identity_column=Column.TRADE,
+        temporal_column=Column.DATE,
         mode="time_series",
         per_trade_normalize=False,  # we normalize in the orchestrator using TRAIN denominators
         use_robust_scaler=True,
@@ -81,13 +88,13 @@ def run_qc_orchestrator(input_path: str) -> str:
     )
     ifqc.fit(trainDataSet)
 
-    robustZScoreEngine = RobustZQC(features=ROBUST_Z_FEATURES)
+    robustZScoreEngine = RobustZQC(features=qc_features, identity_column=Column.TRADE)
     robustZScoreEngine.fit(trainDataSet)
 
-    interquartileRangeEngine = IQRQC(features=IQR_FEATURES)
+    interquartileRangeEngine = IQRQC(features=qc_features, identity_column=Column.TRADE)
     interquartileRangeEngine.fit(trainDataSet)
 
-    rollingMeanEngine = RollingZQC(features=ROLL_FEATURES, window=ROLL_WINDOW)
+    rollingMeanEngine = RollingZQC(features=qc_features, identity_column=Column.TRADE, temporal_column=Column.DATE, window=ROLL_WINDOW)
     rollingMeanEngine.fit(trainDataSet)  # warm-up buffers
 
     aggregator = ScoreAggregator(w_if=0.4, w_rz=0.3, w_roll=0.2, w_iqr=0.1)
@@ -96,7 +103,7 @@ def run_qc_orchestrator(input_path: str) -> str:
     results = []
     for d in oos_dates:
         day_raw = fullDataSet.loc[fullDataSet[Column.DATE] == d].copy()
-        day = apply_denominators(day_raw, denominators, level_feats)  # use TRAIN denominators
+        day = apply_denominators(day_raw, denominators, qc_features)  # use TRAIN denominators
 
         # Compute individual scores (each returns a Series aligned to day.index)
         ifScore = ifqc.score_day(day)
@@ -141,7 +148,7 @@ def run_qc_orchestrator(input_path: str) -> str:
 if __name__ == "__main__":
     # 1) Ask user for input path
     path = input("Enter full path to PnL_Input.csv: ").strip()
-    out_path = run_qc_orchestrator(path)
+    out_path = run_qc_orchestrator(path, QC_FEATURES)
     print(f"\n=== Full export written ===\n{out_path}")
 
 
