@@ -3,7 +3,6 @@ from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
 
-import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 class RollingZQC(QCMethod):
@@ -14,7 +13,7 @@ class RollingZQC(QCMethod):
     After scoring, call update_state(day_df) to append today's values to buffers.
     """
 
-    def __init__(self, features: List[str], identity_column: str, temporal_column: str, window: int = 20, z_cap: float = 6.0):
+    def __init__(self, *, features: List[str], identity_column: str, temporal_column: str, score_name: str, window: int = 20, z_cap: float = 6.0):
         """
         Initialize RollingZQC with features and rolling window parameters.
         
@@ -25,6 +24,7 @@ class RollingZQC(QCMethod):
             window (int, optional): Size of the rolling window buffer for each trade-feature. Defaults to 20.
             z_cap (float, optional): Maximum Z-score value used for clipping. Defaults to 6.0.
         """
+        super().__init__(score_name=score_name)
         self.features = features
         self.identity_column = identity_column
         self.temporal_column = temporal_column
@@ -87,7 +87,7 @@ class RollingZQC(QCMethod):
                         z = (float(row[f]) - mu) / (sd + self._eps) if np.isfinite(sd) and sd > 0 else 0.0
                         z_max = max(z_max, abs(z))
                 vals.append(float(np.clip(z_max / self.z_cap, 0.0, 1.0)))
-        return pd.Series(vals, index=day_df.index, name=Column.ROLLING_SCORE)
+        return pd.Series(vals, index=day_df.index, name=self.ScoreName)
 
     def update_state(self, day_df: pd.DataFrame) -> None:
         """

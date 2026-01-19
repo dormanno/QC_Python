@@ -7,7 +7,6 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import IsolationForest
 
-import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 FeatureMode = Literal["time_series", "cross_sectional"]
@@ -33,9 +32,11 @@ class IsolationForestQC(QCMethod):
     """
 
     def __init__(self,
+                 *,
                  base_feats: List[str],
                  identity_column: str,
                  temporal_column: str,
+                 score_name: str,
                  mode: FeatureMode = "time_series",
                  per_trade_normalize: bool = False,
                  use_robust_scaler: bool = True,
@@ -61,6 +62,7 @@ class IsolationForestQC(QCMethod):
                                                        Defaults to 0.01. Can be 'auto'.
             random_state (int, optional): Random seed for reproducibility. Defaults to 42.
         """
+        super().__init__(score_name=score_name)
         self.base_feats = base_feats
         self.identity_column = identity_column
         self.temporal_column = temporal_column
@@ -179,7 +181,7 @@ class IsolationForestQC(QCMethod):
         decf = self._clf.decision_function(X)
         ranks = pd.Series(decf).rank(method="average")  # low decf => more anomalous
         intensity = 1.0 - (ranks - 1) / (len(ranks) - 1 + 1e-12)
-        return intensity.rename(Column.IF_SCORE)
+        return intensity.rename(self.ScoreName)
 
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
         """

@@ -10,6 +10,13 @@ class QCMethod(ABC):
                            aligned to day_df.index.
     """
 
+    def __init__(self, score_name: str):
+        self._score_name = score_name
+
+    @property
+    def ScoreName(self) -> str:
+        return self._score_name
+
     @abstractmethod
     def fit(self, train_df: pd.DataFrame) -> None:
         pass

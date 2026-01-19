@@ -2,7 +2,6 @@ from typing import List, Dict
 import numpy as np
 import pandas as pd
 
-import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 class RobustZQC(QCMethod):
@@ -11,7 +10,7 @@ class RobustZQC(QCMethod):
     Score = max_abs_robust_z over selected features, clipped at z_cap and mapped to [0,1].
     """
 
-    def __init__(self, features: List[str], identity_column: str, z_cap: float = 6.0):
+    def __init__(self, *, features: List[str], identity_column: str, score_name: str, z_cap: float = 6.0):
         """
         Initialize RobustZQC with specified features and z-score cap.
         
@@ -20,6 +19,7 @@ class RobustZQC(QCMethod):
             identity_column (str): Column name for trade/entity identifier.
             z_cap (float, optional): Maximum Z-score value used for clipping. Defaults to 6.0.
         """
+        super().__init__(score_name=score_name)
         self.features = features
         self.identity_column = identity_column
         self.z_cap = z_cap
@@ -71,5 +71,5 @@ class RobustZQC(QCMethod):
                 z = (row[self.features] - med) / (1.4826 * mad + self._eps)
                 z_max = float(np.nanmax(np.abs(z.values.astype(float)))) if len(z) else 0.0
                 vals.append(np.clip(z_max / self.z_cap, 0.0, 1.0))
-        s = pd.Series(vals, index=day_df.index, name=Column.ROBUST_Z_SCORE)
+        s = pd.Series(vals, index=day_df.index, name=self.ScoreName)
         return s

@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import Literal
-import ColumnNames as Column
+from ColumnNames import qc_column
 
 FLAG = Literal["GREEN", "AMBER", "RED"]
 
@@ -29,11 +29,11 @@ class ScoreAggregator:
     def combine(self, df: pd.DataFrame) -> pd.Series:
         # expects columns: IF_score, RobustZ_score, Rolling_score, IQR_score
         return (
-            self.w_if   * df[Column.IF_SCORE]
-          + self.w_rz   * df[Column.ROBUST_Z_SCORE]
-          + self.w_roll * df[Column.ROLLING_SCORE]
-          + self.w_iqr  * df[Column.IQR_SCORE]
-        ).rename(Column.AGGREGATED_SCORE)
+            self.w_if   * df[qc_column.IF_SCORE]
+          + self.w_rz   * df[qc_column.ROBUST_Z_SCORE]
+          + self.w_roll * df[qc_column.ROLLING_SCORE]
+          + self.w_iqr  * df[qc_column.IQR_SCORE]
+        ).rename(qc_column.AGGREGATED_SCORE)
 
     def map_to_flag(self, agg: pd.Series) -> pd.Series:
         """
@@ -50,4 +50,4 @@ class ScoreAggregator:
             right=False, include_lowest=True
         ).astype("category")
         cats = cats.cat.set_categories(["GREEN", "AMBER", "RED"], ordered=True)
-        return cats.rename(Column.SCORE_FLAG)
+        return cats.rename(qc_column.QC_FLAG)

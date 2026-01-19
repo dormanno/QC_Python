@@ -2,7 +2,6 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-import ColumnNames as Column
 from QC_methods.QC_Base import QCMethod
 
 class IQRQC(QCMethod):
@@ -11,7 +10,7 @@ class IQRQC(QCMethod):
       Score = fraction of features outside [Q1-1.5*IQR, Q3+1.5*IQR] in [0,1].
     """
 
-    def __init__(self, features: List[str], identity_column: str):
+    def __init__(self, *, features: List[str], identity_column: str, score_name: str):
         """
         Initialize IQRQC with specified features for IQR-based outlier detection.
         
@@ -19,6 +18,7 @@ class IQRQC(QCMethod):
             features (List[str]): List of feature column names to use for IQR-based scoring.
             identity_column (str): Column name for trade/entity identifier.
         """
+        super().__init__(score_name=score_name)
         self.features = features
         self.identity_column = identity_column
         self.q1: pd.DataFrame | None = None
@@ -72,4 +72,4 @@ class IQRQC(QCMethod):
                 x = row[self.features].astype(float)
                 viol = ((x < lo) | (x > hi)).astype(float)
                 vals.append(float(np.nanmean(viol.values)) if len(viol) else 0.0)
-        return pd.Series(vals, index=day_df.index, name=Column.IQR_SCORE)
+        return pd.Series(vals, index=day_df.index, name=self.ScoreName)

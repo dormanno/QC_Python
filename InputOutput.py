@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import pandas as pd
-import ColumnNames as ColumnName
+from ColumnNames import main_column, pnl_column, qc_column
 import os
 
 class Input:
@@ -59,12 +59,12 @@ class Input:
         df['Date'] = pd.to_datetime(df['Date'], format="%Y%m%d")
         self._assert_expected_columns(df)
 
-        if parse_dates and ColumnName.DATE in df.columns:
-            df[ColumnName.DATE] = pd.to_datetime(df[ColumnName.DATE], format=self.DATE_FORMAT)
+        if parse_dates and main_column.DATE in df.columns:
+            df[main_column.DATE] = pd.to_datetime(df[main_column.DATE], format=self.DATE_FORMAT)
 
         # Basic sanitization
-        df = df.dropna(subset=[ColumnName.TRADE, ColumnName.DATE, ColumnName.TRADE_TYPE]).copy()
-        df[ColumnName.TRADE] = df[ColumnName.TRADE].astype(str).str.strip()
+        df = df.dropna(subset=[main_column.TRADE, main_column.DATE, main_column.TRADE_TYPE]).copy()
+        df[main_column.TRADE] = df[main_column.TRADE].astype(str).str.strip()
 
         # Ensure numeric types
         for c in self.NUMERIC_COLS:
@@ -74,7 +74,7 @@ class Input:
         df = self.input_post_process(df)
         
         # Sort and reset
-        df = df.sort_values([ColumnName.DATE, ColumnName.TRADE]).reset_index(drop=True)
+        df = df.sort_values([main_column.DATE, main_column.TRADE]).reset_index(drop=True)
         return df
 
     def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -98,14 +98,14 @@ class PnlInput(Input):
     """
     
     EXPECTED_COLS = [
-        ColumnName.TRADE, 
-        ColumnName.DATE,
-        ColumnName.TRADE_TYPE,
-        ColumnName.START,
-        *ColumnName.PNL_SLICES,
-        ColumnName.END
+        main_column.TRADE, 
+        main_column.DATE,
+        main_column.TRADE_TYPE,
+        pnl_column.START,
+        *pnl_column.SLICE_COLUMNS,
+        pnl_column.END
     ]
-    NUMERIC_COLS = ColumnName.PNL_INPUT_FEATURES
+    NUMERIC_COLS = pnl_column.INPUT_FEATURES
 
     def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
         """Post-process PnL data with feature engineering.
@@ -126,13 +126,13 @@ class PnlInput(Input):
         Keeps original columns.
         """
         df = df.copy()
-        df[ColumnName.TOTAL] = df[ColumnName.END] - df[ColumnName.START]
-        df[ColumnName.EXPLAINED] = df[ColumnName.PNL_SLICES].sum(axis=1)
-        df[ColumnName.UNEXPLAINED] = df[ColumnName.TOTAL] - df[ColumnName.EXPLAINED]  # mismatch diagnostic
+        df[pnl_column.TOTAL] = df[pnl_column.END] - df[pnl_column.START]
+        df[pnl_column.EXPLAINED] = df[pnl_column.SLICE_COLUMNS].sum(axis=1)
+        df[pnl_column.UNEXPLAINED] = df[pnl_column.TOTAL] - df[pnl_column.EXPLAINED]  # mismatch diagnostic
 
         eps = 1e-8
-        df[ColumnName.TOTAL_JUMP] = df[ColumnName.TOTAL] / (df[ColumnName.START].abs() + eps)
-        df[ColumnName.UNEXPLAINED_JUMP] = df[ColumnName.UNEXPLAINED] / (df[ColumnName.START].abs() + eps)
+        df[pnl_column.TOTAL_JUMP] = df[pnl_column.TOTAL] / (df[pnl_column.START].abs() + eps)
+        df[pnl_column.UNEXPLAINED_JUMP] = df[pnl_column.UNEXPLAINED] / (df[pnl_column.START].abs() + eps)
         return df
 
 
@@ -145,12 +145,12 @@ class Output:
         Left-join per-trade/day QC scores back to the full dataset.
         OOS rows get populated; in-sample rows will have NaNs in score columns.
         """
-        cols = tuple(score_cols) if score_cols is not None else ColumnName.DEFAULT_SCORES
-        join_frame = oos_scores[[ColumnName.TRADE, ColumnName.DATE, *cols]].copy()
+        cols = tuple(score_cols) if score_cols is not None else qc_column.SCORE_COLUMNS
+        join_frame = oos_scores[[main_column.TRADE, main_column.DATE, *cols]].copy()
 
         merged = full_data_set.merge(
             join_frame,
-            on=[ColumnName.TRADE, ColumnName.DATE],
+            on=[main_column.TRADE, main_column.DATE],
             how="left",
             validate="one_to_one"  # raises if duplicates would create fan-out
         )

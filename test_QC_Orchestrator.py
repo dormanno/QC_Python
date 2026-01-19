@@ -5,12 +5,12 @@ import tempfile
 import shutil
 from QC_Orchestrator import QCOrchestrator
 import InputOutput as IO
-import ColumnNames as Column
+from ColumnNames import pnl_column
 
 class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):
         # Define features for QC
-        qc_features = Column.PNL_FEATURES
+        qc_features = pnl_column.QC_FEATURES
         
         original_input_directory = r"C:\Users\dorma\Documents\UEK_Backup\Test"
         original_input_file = "PnL_Input2.csv"
