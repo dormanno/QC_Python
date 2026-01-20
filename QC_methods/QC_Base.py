@@ -24,3 +24,23 @@ class QCMethod(ABC):
     @abstractmethod
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
         pass
+
+
+class StatefulQCMethod(QCMethod):
+    """
+    Interface for stateful QC methods that maintain state across scoring iterations.
+    
+    Stateful methods need to update their internal state after scoring each day
+    to maintain rolling windows or other temporal dependencies.
+    """
+    
+    @abstractmethod
+    def update_state(self, day_df: pd.DataFrame) -> None:
+        """Update internal state after scoring a day's data.
+        
+        This method should be called AFTER score_day() to prevent look-ahead bias.
+        
+        Args:
+            day_df (pd.DataFrame): DataFrame containing the day's data to incorporate into state.
+        """
+        pass

@@ -4,6 +4,8 @@ import pandas as pd
 import tempfile
 import shutil
 from QC_Orchestrator import QCOrchestrator
+from QCEngine import QCEngine
+from FeatureNormalizer import FeatureNormalizer
 import InputOutput as IO
 from ColumnNames import pnl_column
 
@@ -11,6 +13,26 @@ class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):
         # Define features for QC
         qc_features = pnl_column.QC_FEATURES
+        
+        # Define aggregator weights
+        weight_if = 0.4
+        weight_rz = 0.3
+        weight_roll = 0.2
+        weight_iqr = 0.1
+        roll_window = 20
+        
+        # Create feature normalizer
+        normalizer = FeatureNormalizer(features=qc_features)
+        
+        # Create QC Engine
+        qc_engine = QCEngine(
+            qc_features=qc_features,
+            weight_if=weight_if,
+            weight_rz=weight_rz,
+            weight_roll=weight_roll,
+            weight_iqr=weight_iqr,
+            roll_window=roll_window
+        )
         
         original_input_directory = r"C:\Users\dorma\Documents\UEK_Backup\Test"
         original_input_file = "PnL_Input2.csv"
@@ -28,7 +50,10 @@ class TestQCOrchestrator(unittest.TestCase):
 
             # Run the orchestrator
             try:
-                orchestrator = QCOrchestrator(qc_features=qc_features)
+                orchestrator = QCOrchestrator(
+                    normalizer=normalizer,
+                    qc_engine=qc_engine
+                )
                 output_path = orchestrator.run(temp_input_path)
                 # 1. Run succeeded (no exception)
                 self.assertIsInstance(output_path, str)

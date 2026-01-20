@@ -10,29 +10,32 @@ class ScoreAggregator:
     """
 
     def __init__(self,
-                 w_if: float = 0.4,
-                 w_rz: float = 0.3,
-                 w_roll: float = 0.2,
-                 w_iqr: float = 0.1,
+                 weight_if: float,
+                 weight_rz: float,
+                 weight_roll: float,
+                 weight_iqr: float,
                  *,
                  amber_lo: float = 0.85,
                  red_lo: float = 0.95
                  ):
-        s = w_if + w_rz + w_roll + w_iqr
+        s = weight_if + weight_rz + weight_roll + weight_iqr
         if abs(s - 1.0) > 1e-9:
             raise ValueError("Weights must sum to 1.")
         if not (0.0 <= amber_lo < red_lo <= 1.0):
             raise ValueError("Require 0 ≤ amber_lo < red_lo ≤ 1.")
-        self.w_if, self.w_rz, self.w_roll, self.w_iqr = w_if, w_rz, w_roll, w_iqr
+        self.weight_if = weight_if
+        self.weight_rz = weight_rz
+        self.weight_roll = weight_roll
+        self.weight_iqr = weight_iqr
         self.amber_lo, self.red_lo = amber_lo, red_lo
 
     def combine(self, df: pd.DataFrame) -> pd.Series:
         # expects columns: IF_score, RobustZ_score, Rolling_score, IQR_score
         return (
-            self.w_if   * df[qc_column.IF_SCORE]
-          + self.w_rz   * df[qc_column.ROBUST_Z_SCORE]
-          + self.w_roll * df[qc_column.ROLLING_SCORE]
-          + self.w_iqr  * df[qc_column.IQR_SCORE]
+            self.weight_if   * df[qc_column.IF_SCORE]
+          + self.weight_rz   * df[qc_column.ROBUST_Z_SCORE]
+          + self.weight_roll * df[qc_column.ROLLING_SCORE]
+          + self.weight_iqr  * df[qc_column.IQR_SCORE]
         ).rename(qc_column.AGGREGATED_SCORE)
 
     def map_to_flag(self, agg: pd.Series) -> pd.Series:

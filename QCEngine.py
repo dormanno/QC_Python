@@ -1,0 +1,143 @@
+"""QC Engine that encapsulates QC methods and scoring logic."""
+
+import logging
+from typing import List, Dict
+import pandas as pd
+
+from ColumnNames import main_column, qc_column
+from QC_methods import IsolationForestQC, RobustZQC, IQRQC, RollingZQC
+from QC_methods.QC_Base import StatefulQCMethod
+from Aggregator import ScoreAggregator
+
+logger = logging.getLogger(__name__)
+
+
+class QCEngine:
+    """Encapsulates QC methods and aggregation logic.
+    
+    Responsible for:
+    - Instantiating QC methods with appropriate configurations
+    - Managing the aggregator with weights
+    - Fitting methods on training data
+    - Scoring data with all methods and aggregating results
+    - Updating stateful methods
+    """
+    
+    def __init__(self,
+                 qc_features: List[str],
+                 weight_if: float,
+                 weight_rz: float,
+                 weight_roll: float,
+                 weight_iqr: float,
+                 roll_window: int = 20):
+        """Initialize QC Engine with features, weights, and configuration.
+        
+        Args:
+            qc_features (List[str]): Features to use for QC scoring.
+            weight_if (float): Weight for Isolation Forest score.
+            weight_rz (float): Weight for Robust Z score.
+            weight_roll (float): Weight for Rolling score.
+            weight_iqr (float): Weight for IQR score.
+            roll_window (int, optional): Rolling window size. Defaults to 20.
+        """
+        self.qc_features = qc_features
+        self.roll_window = roll_window
+        
+        # Initialize aggregator
+        self.aggregator = ScoreAggregator(
+            weight_if=weight_if,
+            weight_rz=weight_rz,
+            weight_roll=weight_roll,
+            weight_iqr=weight_iqr
+        )
+        
+        # Initialize QC methods
+        self.qc_methods = self._instantiate_qc_methods()
+        logger.info(f"QC Engine initialized with {len(self.qc_methods)} methods")
+    
+    def _instantiate_qc_methods(self) -> Dict:
+        """Instantiate all QC scoring methods.
+        
+        Returns:
+            Dict: Dictionary of QC method instances keyed by method type.
+        """
+        methods = {
+            'isolation_forest': IsolationForestQC(
+                base_feats=self.qc_features,
+                identity_column=main_column.TRADE,
+                temporal_column=main_column.DATE,
+                score_name=qc_column.IF_SCORE,
+                mode="time_series",
+                per_trade_normalize=False,
+                use_robust_scaler=True,
+                n_estimators=200,
+                max_samples=256,
+                contamination=0.01,
+            ),
+            'robust_z': RobustZQC(
+                features=self.qc_features,
+                identity_column=main_column.TRADE,
+                score_name=qc_column.ROBUST_Z_SCORE,
+            ),
+            'iqr': IQRQC(
+                features=self.qc_features,
+                identity_column=main_column.TRADE,
+                score_name=qc_column.IQR_SCORE,
+            ),
+            'rolling': RollingZQC(
+                features=self.qc_features,
+                identity_column=main_column.TRADE,
+                temporal_column=main_column.DATE,
+                score_name=qc_column.ROLLING_SCORE,
+                window=self.roll_window
+            )
+        }
+        
+        logger.info(f"Instantiated {len(methods)} QC methods: {list(methods.keys())}")
+        return methods
+    
+    def fit(self, train_data: pd.DataFrame) -> None:
+        """Fit all QC methods on training data.
+        
+        Args:
+            train_data (pd.DataFrame): Training data to fit methods on.
+        """
+        for name, method in self.qc_methods.items():
+            method.fit(train_data)
+            logger.info(f"Fitted {name} on training data")
+    
+    def score_day(self, day_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+        """Score a single day's data with all QC methods and aggregate.
+        
+        Args:
+            day_data (pd.DataFrame): Data for one day (already normalized).
+        
+        Returns:
+            Tuple containing:
+                - day_scores (pd.DataFrame): Individual method scores
+                - aggregated_score (pd.Series): Weighted aggregated score
+                - qc_flag (pd.DataFrame): Traffic-light flags (GREEN/AMBER/RED)
+        """
+        # Score with each method dynamically
+        scores = {method.ScoreName: method.score_day(day_data) 
+                  for method in self.qc_methods.values()}
+        
+        # Aggregate scores
+        day_scores = pd.concat(scores.values(), axis=1)
+        day_scores.columns = scores.keys()
+        aggregated_score = self.aggregator.combine(day_scores)
+        qc_flag = self.aggregator.map_to_flag(aggregated_score).to_frame()
+        
+        return day_scores, aggregated_score, qc_flag
+    
+    def update_stateful_methods(self, day_data: pd.DataFrame) -> None:
+        """Update state for all stateful QC methods.
+        
+        Should be called AFTER scoring to prevent look-ahead bias.
+        
+        Args:
+            day_data (pd.DataFrame): Data to incorporate into stateful methods.
+        """
+        for method in self.qc_methods.values():
+            if isinstance(method, StatefulQCMethod):
+                method.update_state(day_data)
