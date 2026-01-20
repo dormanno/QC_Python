@@ -1,10 +1,10 @@
 """Command-line interface for running QC orchestration."""
 
 import logging
-from ColumnNames import pnl_column
-from FeatureNormalizer import FeatureNormalizer
-from QCEngine import QCEngine
-from QC_Orchestrator import QCOrchestrator
+from column_names import pnl_column
+from feature_normalizer import FeatureNormalizer
+from qc_engine import QCEngine
+from qc_orchestrator import QCOrchestrator
 
 
 def main():

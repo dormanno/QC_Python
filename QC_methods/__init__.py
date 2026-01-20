@@ -1,12 +1,12 @@
 # qc_methods/__init__.py
-from .IsolationForest import IsolationForestQC
-from .robust_z import RobustZQC
+from .isolation_forest import IsolationForestQC
+from .robust_z import RobustZScoreQC
 from .iqr import IQRQC
-from .rolling import RollingZQC
+from .rolling import RollingZScoreQC
 
 __all__ = [
     "IsolationForestQC",
-    "RobustZQC",
+    "RobustZScoreQC",
     "IQRQC",
-    "RollingZQC",
+    "RollingZScoreQC",
 ]

@@ -3,9 +3,9 @@ from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
 
-from QC_methods.QC_Base import StatefulQCMethod
+from QC_methods.qc_base import StatefulQCMethod
 
-class RollingZQC(StatefulQCMethod):
+class RollingZScoreQC(StatefulQCMethod):
     """
     Rolling Z-score per trade per feature using a trailing buffer of fixed length.
     Fit(): warm-up the buffers with TRAIN.
@@ -15,7 +15,7 @@ class RollingZQC(StatefulQCMethod):
 
     def __init__(self, *, features: List[str], identity_column: str, temporal_column: str, score_name: str, window: int = 20, z_cap: float = 6.0):
         """
-        Initialize RollingZQC with features and rolling window parameters.
+        Initialize RollingZScoreQC with features and rolling window parameters.
         
         Args:
             features (List[str]): List of feature column names to compute rolling Z-scores for.

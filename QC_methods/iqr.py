@@ -2,7 +2,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from QC_methods.QC_Base import QCMethod
+from QC_methods.qc_base import QCMethod
 
 class IQRQC(QCMethod):
     """

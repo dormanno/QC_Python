@@ -2,9 +2,9 @@ from typing import List, Dict
 import numpy as np
 import pandas as pd
 
-from QC_methods.QC_Base import QCMethod
+from QC_methods.qc_base import QCMethod
 
-class RobustZQC(QCMethod):
+class RobustZScoreQC(QCMethod):
     """
     Per-trade robust Z-score using TRAIN medians and MADs.
     Score = max_abs_robust_z over selected features, clipped at z_cap and mapped to [0,1].
@@ -12,7 +12,7 @@ class RobustZQC(QCMethod):
 
     def __init__(self, *, features: List[str], identity_column: str, score_name: str, z_cap: float = 6.0):
         """
-        Initialize RobustZQC with specified features and z-score cap.
+        Initialize RobustZScoreQC with specified features and z-score cap.
         
         Args:
             features (List[str]): List of feature column names to use for robust Z-score calculation.
@@ -29,7 +29,7 @@ class RobustZQC(QCMethod):
 
     def fit(self, train_df: pd.DataFrame) -> None:
         """
-        Fit the RobustZQC model by computing median and MAD (Median Absolute Deviation) for each trade.
+        Fit the RobustZScoreQC model by computing median and MAD (Median Absolute Deviation) for each trade.
         
         Args:
             train_df (pd.DataFrame): Training DataFrame containing identity_column and feature columns.

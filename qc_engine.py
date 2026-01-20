@@ -4,10 +4,10 @@ import logging
 from typing import List, Dict
 import pandas as pd
 
-from ColumnNames import main_column, qc_column
-from QC_methods import IsolationForestQC, RobustZQC, IQRQC, RollingZQC
-from QC_methods.QC_Base import StatefulQCMethod
-from Aggregator import ScoreAggregator
+from column_names import main_column, qc_column
+from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC
+from QC_methods.qc_base import StatefulQCMethod
+from aggregator import ScoreAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class QCEngine:
                 max_samples=256,
                 contamination=0.01,
             ),
-            'robust_z': RobustZQC(
+            'robust_z': RobustZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.ROBUST_Z_SCORE,
@@ -84,7 +84,7 @@ class QCEngine:
                 identity_column=main_column.TRADE,
                 score_name=qc_column.IQR_SCORE,
             ),
-            'rolling': RollingZQC(
+            'rolling': RollingZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,

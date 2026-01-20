@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import pandas as pd
-from ColumnNames import main_column, pnl_column, qc_column
+from column_names import main_column, pnl_column, qc_column
 import os
 
 class Input:
@@ -91,7 +91,7 @@ class Input:
         return df  # Default: return unchanged
 
 
-class PnlInput(Input):
+class PnLInput(Input):
     """Handles reading and engineering PnL-specific input data.
     
     Extends Input class with PnL-specific column expectations and feature engineering.

@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import Literal
-from ColumnNames import qc_column
+from column_names import qc_column
 
 FLAG = Literal["GREEN", "AMBER", "RED"]
 

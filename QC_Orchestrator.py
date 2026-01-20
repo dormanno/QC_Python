@@ -2,10 +2,10 @@ import logging
 import pandas as pd
 from typing import List, Tuple
 
-import InputOutput as IO
-from ColumnNames import main_column, qc_column
-from FeatureNormalizer import FeatureNormalizer
-from QCEngine import QCEngine
+import input_output as IO
+from column_names import main_column, qc_column
+from feature_normalizer import FeatureNormalizer
+from qc_engine import QCEngine
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class QCOrchestrator:
         """
         self.normalizer = normalizer
         self.qc_engine = qc_engine
-        self.input_handler = IO.PnlInput()
+        self.input_handler = IO.PnLInput()
         self.output_handler = IO.Output()
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:

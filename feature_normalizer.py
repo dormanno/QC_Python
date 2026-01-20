@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 from typing import List
-from ColumnNames import main_column
+from column_names import main_column
 
 
 class FeatureNormalizer:

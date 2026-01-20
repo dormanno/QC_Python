@@ -3,11 +3,11 @@ import os
 import pandas as pd
 import tempfile
 import shutil
-from QC_Orchestrator import QCOrchestrator
-from QCEngine import QCEngine
-from FeatureNormalizer import FeatureNormalizer
-import InputOutput as IO
-from ColumnNames import pnl_column
+from qc_orchestrator import QCOrchestrator
+from qc_engine import QCEngine
+from feature_normalizer import FeatureNormalizer
+import input_output as IO
+from column_names import pnl_column
 
 class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):

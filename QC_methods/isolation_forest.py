@@ -7,7 +7,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import IsolationForest
 
-from QC_methods.QC_Base import QCMethod
+from QC_methods.qc_base import QCMethod
 
 FeatureMode = Literal["time_series", "cross_sectional"]
 
