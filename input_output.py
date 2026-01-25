@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import pandas as pd
-from column_names import main_column, pnl_column, qc_column, cds_column
+from column_names import main_column, pnl_column, qc_column, cds_column, cdi_column
 import os
 
 class Input:
@@ -114,6 +114,33 @@ class CreditDeltaSingleInput(Input):
         
         Returns:
             pd.DataFrame: DataFrame with engineered Credit Delta Single feature columns.
+        """
+        return df  # No additional processing for now
+    
+class CreditDeltaIndexInput(Input):
+    """Handles reading and engineering Credit Delta Index-specific input data.
+    
+    Extends Input class with Credit Delta Index-specific column expectations and feature engineering.
+    """
+    
+    EXPECTED_COLS = [
+        main_column.TRADE, 
+        main_column.DATE,
+        main_column.TRADE_TYPE,
+        cdi_column.CREDIT_DELTA_INDEX
+    ]
+    NUMERIC_COLS = cdi_column.INPUT_FEATURES
+
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process Credit Delta Index data with feature engineering.
+        
+        Currently no additional features; placeholder for future extensions.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw Credit Delta Index data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with engineered Credit Delta Index feature columns.
         """
         return df  # No additional processing for now
 

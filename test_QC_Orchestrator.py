@@ -7,7 +7,7 @@ from qc_orchestrator import QCOrchestrator
 from qc_engine import QCEngine
 from feature_normalizer import FeatureNormalizer
 import input_output as IO
-from column_names import pnl_column, cds_column, qc_column
+from column_names import pnl_column, cds_column, qc_column, cdi_column
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 # Define aggregator weights
@@ -86,6 +86,10 @@ class TestQCOrchestrator(unittest.TestCase):
     def test_QC_CreditDeltaSingle(self):
         """Test QC for Credit Delta Single data."""        
         self._run_qc_test(cds_column, "CreditDeltaSingle_Input.csv", IO.CreditDeltaSingleInput())
+
+    def test_QC_CreditDeltaIndex(self):
+        """Test QC for Credit Delta Index data."""        
+        self._run_qc_test(cdi_column, "CreditDeltaIndex_Input.csv", IO.CreditDeltaIndexInput())
 
 if __name__ == '__main__':
     unittest.main()

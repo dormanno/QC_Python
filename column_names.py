@@ -42,6 +42,20 @@ class CreditDeltaSingleColumnSet(FeatureColumnSet):
         object.__setattr__(self, 'ENGINEERED_FEATURES', [])# No engineered features for CreditDeltaSingle
 
 @dataclass(frozen=True)
+class CreditDeltaIndexColumnSet(FeatureColumnSet):
+    """Credit Delta Index related columns"""
+    CREDIT_DELTA_INDEX: str = "CreditDeltaIndex"
+
+    def __post_init__(self):
+        object.__setattr__(self, 'QC_FEATURES', [
+                self.CREDIT_DELTA_INDEX
+            ])
+        object.__setattr__(self, 'INPUT_FEATURES', [
+                self.CREDIT_DELTA_INDEX
+            ])
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])# No engineered features for CreditDeltaIndex
+
+@dataclass(frozen=True)
 class PnLColumnSet(FeatureColumnSet):
     """PnL-related columns"""
     START: str = "Start_PV"
@@ -111,3 +125,4 @@ main_column = MainColumnSet()
 pnl_column = PnLColumnSet()
 qc_column = QCColumnSet()
 cds_column = CreditDeltaSingleColumnSet()
+cdi_column = CreditDeltaIndexColumnSet()
