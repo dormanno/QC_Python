@@ -1,17 +1,48 @@
 from dataclasses import dataclass
+from abc import ABC
 
 
 @dataclass(frozen=True)
-class MainColumn:
+class FeatureColumnSet(ABC):
+    """Abstract base class for columns with INPUT_FEATURES and QC_FEATURES"""
+    INPUT_FEATURES: list = None
+    QC_FEATURES: list = None
+    ENGINEERED_FEATURES: list = None
+
+
+@dataclass(frozen=True)
+class MainColumnSet:
     """Main trade identifier columns"""
     TRADE: str = "TradeID"
     BOOK: str = "Book"
     TRADE_TYPE: str = "TradeType"
     DATE: str = "Date"
+    MAIN_COLUMNS: list = None
 
+    def __post_init__(self):
+        object.__setattr__(self, 'MAIN_COLUMNS', [
+                self.TRADE, 
+                self.BOOK,
+                self.TRADE_TYPE,
+                self.DATE
+            ])
 
 @dataclass(frozen=True)
-class PnLColumn:
+class CreditDeltaSingleColumnSet(FeatureColumnSet):
+    """Credit Delta Single related columns"""
+    CREDIT_DELTA_SINGLE: str = "CreditDeltaSingle"
+
+    def __post_init__(self):
+        object.__setattr__(self, 'QC_FEATURES', [
+                self.CREDIT_DELTA_SINGLE
+            ])
+        object.__setattr__(self, 'INPUT_FEATURES', [
+                self.CREDIT_DELTA_SINGLE
+            ])
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])# No engineered features for CreditDeltaSingle
+
+@dataclass(frozen=True)
+class PnLColumnSet(FeatureColumnSet):
     """PnL-related columns"""
     START: str = "Start_PV"
     END: str = "End_PV"
@@ -33,8 +64,6 @@ class PnLColumn:
     
     # Derived lists (initialized in __post_init__)
     SLICE_COLUMNS: list = None
-    INPUT_FEATURES: list = None
-    QC_FEATURES: list = None
     
     def __post_init__(self):
         """Initialize derived column lists after instantiation."""
@@ -50,10 +79,14 @@ class PnLColumn:
             self.START, *self.SLICE_COLUMNS, self.TOTAL, 
             self.EXPLAINED, self.UNEXPLAINED
         ])
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [
+            self.TOTAL, self.EXPLAINED, self.UNEXPLAINED,
+            self.TOTAL_JUMP, self.UNEXPLAINED_JUMP
+        ])
 
 
 @dataclass(frozen=True)
-class QCColumn:
+class QCColumnSet:
     """QC output columns"""
     QC_FLAG: str = "QC_Flag"
     IF_SCORE: str = "IF_score"
@@ -74,6 +107,7 @@ class QCColumn:
 
 
 # Create singleton instances for easier access
-main_column = MainColumn()
-pnl_column = PnLColumn()
-qc_column = QCColumn()
+main_column = MainColumnSet()
+pnl_column = PnLColumnSet()
+qc_column = QCColumnSet()
+cds_column = CreditDeltaSingleColumnSet()

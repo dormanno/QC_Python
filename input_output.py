@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import pandas as pd
-from column_names import main_column, pnl_column, qc_column
+from column_names import main_column, pnl_column, qc_column, cds_column
 import os
 
 class Input:
@@ -90,6 +90,32 @@ class Input:
         """
         return df  # Default: return unchanged
 
+class CreditDeltaSingleInput(Input):
+    """Handles reading and engineering Credit Delta Single-specific input data.
+    
+    Extends Input class with Credit Delta Single-specific column expectations and feature engineering.
+    """
+    
+    EXPECTED_COLS = [
+        main_column.TRADE, 
+        main_column.DATE,
+        main_column.TRADE_TYPE,
+        cds_column.CREDIT_DELTA_SINGLE
+    ]
+    NUMERIC_COLS = cds_column.INPUT_FEATURES
+
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process Credit Delta Single data with feature engineering.
+        
+        Currently no additional features; placeholder for future extensions.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw Credit Delta Single data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with engineered Credit Delta Single feature columns.
+        """
+        return df  # No additional processing for now
 
 class PnLInput(Input):
     """Handles reading and engineering PnL-specific input data.

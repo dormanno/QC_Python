@@ -5,6 +5,7 @@ from column_names import pnl_column
 from feature_normalizer import FeatureNormalizer
 from qc_engine import QCEngine
 from qc_orchestrator import QCOrchestrator
+import input_output as IO
 
 
 def main():
@@ -50,7 +51,8 @@ def main():
     try:
         orchestrator = QCOrchestrator(
             normalizer=normalizer,
-            qc_engine=qc_engine
+            qc_engine=qc_engine,
+            input_handler=IO.PnLInput()
         )
         out_path = orchestrator.run(path)
         print(f"\n=== QC Processing Complete ===")

@@ -21,16 +21,18 @@ class QCOrchestrator:
     
     def __init__(self, 
                  normalizer: FeatureNormalizer,
-                 qc_engine: QCEngine):
-        """Initialize the orchestrator with normalizer and engine.
+                 qc_engine: QCEngine,
+                 input_handler: IO.Input):
+        """Initialize the orchestrator with normalizer, engine, and input handler.
         
         Args:
             normalizer (FeatureNormalizer): Configured feature normalizer.
             qc_engine (QCEngine): Configured QC engine with methods and aggregator.
+            input_handler (IO.Input): Input handler for reading and processing data.
         """
         self.normalizer = normalizer
         self.qc_engine = qc_engine
-        self.input_handler = IO.PnLInput()
+        self.input_handler = input_handler
         self.output_handler = IO.Output()
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
