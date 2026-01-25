@@ -2,10 +2,11 @@ import logging
 import pandas as pd
 from typing import List, Tuple
 
-import input_output as IO
+from input import Input
+from output import Output
 from column_names import main_column, qc_column
-from feature_normalizer import FeatureNormalizer
-from qc_engine import QCEngine
+from Engine.feature_normalizer import FeatureNormalizer
+from Engine.qc_engine import QCEngine
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +23,18 @@ class QCOrchestrator:
     def __init__(self, 
                  normalizer: FeatureNormalizer,
                  qc_engine: QCEngine,
-                 input_handler: IO.Input):
+                 input_handler: Input):
         """Initialize the orchestrator with normalizer, engine, and input handler.
         
         Args:
             normalizer (FeatureNormalizer): Configured feature normalizer.
             qc_engine (QCEngine): Configured QC engine with methods and aggregator.
-            input_handler (IO.Input): Input handler for reading and processing data.
+            input_handler (Input): Input handler for reading and processing data.
         """
         self.normalizer = normalizer
         self.qc_engine = qc_engine
         self.input_handler = input_handler
-        self.output_handler = IO.Output()
+        self.output_handler = Output()
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
         """Split data into train/test sets based on date cutoff.

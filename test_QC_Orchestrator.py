@@ -4,9 +4,9 @@ import pandas as pd
 import tempfile
 import shutil
 from qc_orchestrator import QCOrchestrator
-from qc_engine import QCEngine
-from feature_normalizer import FeatureNormalizer
-import input_output as IO
+from Engine.qc_engine import QCEngine
+from Engine.feature_normalizer import FeatureNormalizer
+from input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from column_names import pnl_column, cds_column, qc_column, cdi_column
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
@@ -81,15 +81,15 @@ class TestQCOrchestrator(unittest.TestCase):
 
     def test_QC_PnL(self):
         """Test QC for PnL data."""
-        self._run_qc_test(pnl_column, "PnL_Input2.csv", IO.PnLInput())
+        self._run_qc_test(pnl_column, "PnL_Input2.csv", PnLInput())
     
     def test_QC_CreditDeltaSingle(self):
         """Test QC for Credit Delta Single data."""        
-        self._run_qc_test(cds_column, "CreditDeltaSingle_Input.csv", IO.CreditDeltaSingleInput())
+        self._run_qc_test(cds_column, "CreditDeltaSingle_Input.csv", CreditDeltaSingleInput())
 
     def test_QC_CreditDeltaIndex(self):
         """Test QC for Credit Delta Index data."""        
-        self._run_qc_test(cdi_column, "CreditDeltaIndex_Input.csv", IO.CreditDeltaIndexInput())
+        self._run_qc_test(cdi_column, "CreditDeltaIndex_Input.csv", CreditDeltaIndexInput())
 
 if __name__ == '__main__':
     unittest.main()

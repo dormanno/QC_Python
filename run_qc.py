@@ -2,10 +2,10 @@
 
 import logging
 from column_names import pnl_column
-from feature_normalizer import FeatureNormalizer
-from qc_engine import QCEngine
+from Engine.feature_normalizer import FeatureNormalizer
+from Engine.qc_engine import QCEngine
 from qc_orchestrator import QCOrchestrator
-import input_output as IO
+from input import PnLInput
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
         orchestrator = QCOrchestrator(
             normalizer=normalizer,
             qc_engine=qc_engine,
-            input_handler=IO.PnLInput()
+            input_handler=PnLInput()
         )
         out_path = orchestrator.run(path)
         print(f"\n=== QC Processing Complete ===")

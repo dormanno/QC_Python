@@ -7,7 +7,7 @@ import pandas as pd
 from column_names import main_column, qc_column
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC
 from QC_methods.qc_base import StatefulQCMethod
-from aggregator import ScoreAggregator
+from Engine.aggregator import ScoreAggregator
 
 logger = logging.getLogger(__name__)
 
