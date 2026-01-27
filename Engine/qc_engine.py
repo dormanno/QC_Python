@@ -5,7 +5,7 @@ from typing import List, Dict
 import pandas as pd
 
 from column_names import main_column, qc_column
-from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC
+from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC
 from QC_methods.qc_base import StatefulQCMethod
 from Engine.aggregator import ScoreAggregator
 
@@ -29,6 +29,7 @@ class QCEngine:
                  weight_rz: float,
                  weight_roll: float,
                  weight_iqr: float,
+                 weight_lof: float,
                  roll_window: int = 20):
         """Initialize QC Engine with features, weights, and configuration.
         
@@ -38,6 +39,7 @@ class QCEngine:
             weight_rz (float): Weight for Robust Z score.
             weight_roll (float): Weight for Rolling score.
             weight_iqr (float): Weight for IQR score.
+            weight_lof (float): Weight for LOF score.
             roll_window (int, optional): Rolling window size. Defaults to 20.
         """
         self.qc_features = qc_features
@@ -48,7 +50,8 @@ class QCEngine:
             weight_if=weight_if,
             weight_rz=weight_rz,
             weight_roll=weight_roll,
-            weight_iqr=weight_iqr
+            weight_iqr=weight_iqr,
+            weight_lof=weight_lof
         )
         
         # Initialize QC methods
@@ -90,6 +93,14 @@ class QCEngine:
                 temporal_column=main_column.DATE,
                 score_name=qc_column.ROLLING_SCORE,
                 window=self.roll_window
+            ),
+            'lof': LOFQC(
+                features=self.qc_features,
+                identity_column=main_column.TRADE,
+                score_name=qc_column.LOF_SCORE,
+                n_neighbors=self.roll_window,
+                contamination=0.1,
+                use_robust_scaler=True
             )
         }
         

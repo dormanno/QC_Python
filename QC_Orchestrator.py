@@ -9,7 +9,8 @@ from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
 
 logger = logging.getLogger(__name__)
-
+# Default configuration
+TRAIN_RATIO = 2 / 3  # Use 2/3 of dates for training
 
 class QCOrchestrator:
     """Orchestrates the walk-forward QC evaluation pipeline.
@@ -17,8 +18,7 @@ class QCOrchestrator:
     Manages QC method instantiation, training, scoring, and aggregation.
     """
     
-    # Default configuration
-    TRAIN_RATIO = 2 / 3  # Use 2/3 of dates for training
+    
     
     def __init__(self, 
                  normalizer: FeatureNormalizer,
@@ -51,7 +51,7 @@ class QCOrchestrator:
             ValueError: If insufficient dates for train/test split.
         """
         dates = df[main_column.DATE].drop_duplicates().sort_values().to_list()
-        train_days = int(self.TRAIN_RATIO * len(dates))
+        train_days = int(TRAIN_RATIO * len(dates))
         
         if len(dates) <= train_days:
             raise ValueError(

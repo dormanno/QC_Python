@@ -19,7 +19,7 @@ The system uses a **walk-forward evaluation**:
 
 ## Usage
 
-python QC_Orchestrator.py
+python run_qc.py
 
 You will be prompted to enter the path to your input CSV (containing risk measures and PnL slices).
 

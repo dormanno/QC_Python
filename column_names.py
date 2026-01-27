@@ -108,6 +108,7 @@ class QCColumnSet:
     ROLLING_SCORE: str = "Rolling_score"
     IQR_SCORE: str = "IQR_score"
     AGGREGATED_SCORE: str = "QC_Aggregated"
+    LOF_SCORE: str = "LOF_score"
     
     # Derived lists (initialized in __post_init__)
     SCORE_COLUMNS: list = None
@@ -115,8 +116,13 @@ class QCColumnSet:
     def __post_init__(self):
         """Initialize derived score columns list after instantiation."""
         object.__setattr__(self, 'SCORE_COLUMNS', [
-            self.IF_SCORE, self.ROBUST_Z_SCORE, self.ROLLING_SCORE, 
-            self.IQR_SCORE, self.AGGREGATED_SCORE, self.QC_FLAG
+            self.IF_SCORE, 
+            self.ROBUST_Z_SCORE, 
+            self.ROLLING_SCORE, 
+            self.IQR_SCORE, 
+            self.LOF_SCORE,
+            self.AGGREGATED_SCORE, 
+            self.QC_FLAG
         ])
 
 

@@ -26,10 +26,11 @@ def main():
     ]
     
     # Define aggregator weights
-    weight_if = 0.4
-    weight_rz = 0.3
+    weight_if = 0.2
+    weight_rz = 0.2
     weight_roll = 0.2
-    weight_iqr = 0.1
+    weight_iqr = 0.2
+    weight_lof = 0.2
     roll_window = 20
     
     # Create feature normalizer
@@ -42,6 +43,7 @@ def main():
         weight_rz=weight_rz,
         weight_roll=weight_roll,
         weight_iqr=weight_iqr,
+        weight_lof=weight_lof,
         roll_window=roll_window
     )
     

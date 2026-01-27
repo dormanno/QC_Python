@@ -11,10 +11,12 @@ from column_names import pnl_column, cds_column, qc_column, cdi_column
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 # Define aggregator weights
-WEIGHT_IF = 0.4
-WEIGHT_RZ = 0.3
+WEIGHT_IF = 0.2
+WEIGHT_RZ = 0.2
 WEIGHT_ROLL = 0.2
-WEIGHT_IQR = 0.1
+WEIGHT_IQR = 0.2
+WEIGHT_LOF = 0.2
+
 ROLL_WINDOW = 20
 
 class TestQCOrchestrator(unittest.TestCase):
@@ -33,6 +35,7 @@ class TestQCOrchestrator(unittest.TestCase):
             weight_rz=WEIGHT_RZ,
             weight_roll=WEIGHT_ROLL,
             weight_iqr=WEIGHT_IQR,
+            weight_lof=WEIGHT_LOF,
             roll_window=ROLL_WINDOW
         )
         
