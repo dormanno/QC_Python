@@ -53,7 +53,7 @@ class RollingZScoreQC(StatefulQCMethod):
                 if np.isfinite(v):
                     self.buffers[t][f].append(v)
 
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
         """
         Compute rolling Z-scores for each row, using the historical window of buffered values.
         
@@ -89,7 +89,7 @@ class RollingZScoreQC(StatefulQCMethod):
                 vals.append(float(np.clip(z_max / self.z_cap, 0.0, 1.0)))
         return pd.Series(vals, index=day_df.index, name=self.ScoreName)
 
-    def update_state(self, day_df: pd.DataFrame) -> None:
+    def _update_state_impl(self, day_df: pd.DataFrame) -> None:
         """
         Update rolling buffers by appending today's feature values after scoring.
         

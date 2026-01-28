@@ -121,7 +121,7 @@ class QCEngine:
         """Score a single day's data with all QC methods and aggregate.
         
         Args:
-            day_data (pd.DataFrame): Data for one day (already normalized).
+            day_data (pd.DataFrame): Data for one day (already normalized). Must contain values for all features for all trades for a given day.
         
         Returns:
             Tuple containing:

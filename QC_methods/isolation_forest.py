@@ -183,7 +183,7 @@ class IsolationForestQC(QCMethod):
         intensity = 1.0 - (ranks - 1) / (len(ranks) - 1 + 1e-12)
         return intensity.rename(self.ScoreName)
 
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
         """
         Transform and score a single out-of-sample day using the fitted model.
         

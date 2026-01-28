@@ -110,7 +110,7 @@ class LOFQC(StatefulQCMethod):
         # 7. Store fitted reference data (optional, for diagnostics)
         self._train_X = X_fit_clean
     
-    def update_state(self, day_df):
+    def _update_state_impl(self, day_df):
         """
         Update stateful LOF model with new day's data.
         
@@ -135,7 +135,7 @@ class LOFQC(StatefulQCMethod):
         # Refit LOF on updated buffer
         self.fit(self._buffer_df)
 
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
         """
         Compute LOF-based outlier scores for each row.
         

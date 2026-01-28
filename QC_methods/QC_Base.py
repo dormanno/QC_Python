@@ -22,8 +22,15 @@ class QCMethod(ABC):
         pass
 
     @abstractmethod
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
+        """Actual scoring implementation - to be overridden by subclasses."""
         pass
+    
+    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+        """Public method with validation - not overridden by subclasses."""
+        assert len(day_df) > 0, "day_df must not be empty"
+        assert day_df["Date"].nunique() == 1, "day_df must contain exactly one valuation date"
+        return self._score_day_impl(day_df)
 
 
 class StatefulQCMethod(QCMethod):
@@ -35,6 +42,10 @@ class StatefulQCMethod(QCMethod):
     """
     
     @abstractmethod
+    def _update_state_impl(self, day_df: pd.DataFrame) -> None:
+        """Actual state update implementation - to be overridden by subclasses."""
+        pass
+    
     def update_state(self, day_df: pd.DataFrame) -> None:
         """Update internal state after scoring a day's data.
         
@@ -43,4 +54,5 @@ class StatefulQCMethod(QCMethod):
         Args:
             day_df (pd.DataFrame): DataFrame containing the day's data to incorporate into state.
         """
-        pass
+        assert len(day_df) > 0, "day_df must not be empty"
+        self._update_state_impl(day_df)

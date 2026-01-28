@@ -42,7 +42,7 @@ class RobustZScoreQC(QCMethod):
         self.median = g[self.features].median()
         self.mad = g[self.features].apply(lambda x: (x - x.median()).abs().median()).replace(0.0, np.nan)
 
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
         """
         Compute robust Z-scores for each row in the provided DataFrame.
         

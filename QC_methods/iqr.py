@@ -39,7 +39,7 @@ class IQRQC(QCMethod):
         self.q1 = g[self.features].quantile(0.25)
         self.q3 = g[self.features].quantile(0.75)
 
-    def score_day(self, day_df: pd.DataFrame) -> pd.Series:
+    def _score_day_impl(self, day_df: pd.DataFrame) -> pd.Series:
         """
         Compute Tukey fence-based outlier scores for each row.
         
