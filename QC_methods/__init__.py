@@ -5,6 +5,7 @@ from .iqr import IQRQC
 from .rolling import RollingZScoreQC
 from .lof import LOFQC
 from .ecdf import ECDFQC
+from .hampel import HampelFilterQC
 
 __all__ = [
     "IsolationForestQC",
@@ -13,4 +14,5 @@ __all__ = [
     "RollingZScoreQC",
     "LOFQC",
     "ECDFQC",
+    "HampelFilterQC",
 ]

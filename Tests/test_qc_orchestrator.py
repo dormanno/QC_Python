@@ -15,9 +15,10 @@ WEIGHTS = {
     qc_column.IF_SCORE: 0.2,
     qc_column.ROBUST_Z_SCORE: 0.1,
     qc_column.ROLLING_SCORE: 0.1,
-    qc_column.IQR_SCORE: 0.2,
+    qc_column.IQR_SCORE: 0.1,
     qc_column.LOF_SCORE: 0.2,
-    qc_column.ECDF_SCORE: 0.2
+    qc_column.ECDF_SCORE: 0.2,
+    qc_column.HAMPEL_SCORE: 0.1
 }
 
 ROLL_WINDOW = 20

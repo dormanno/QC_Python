@@ -10,8 +10,8 @@ import pandas as pd
 import numpy as np
 from typing import List
 
-from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC
-from QC_methods.ecdf import ECDFQC
+from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC, HampelFilterQC
+
 from QC_methods.qc_base import StatefulQCMethod
 from column_names import main_column, pnl_column, qc_column
 from input import PnLInput
@@ -309,6 +309,44 @@ class TestIndividualQCMethods(BaseQCMethodTest):
         
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
+    
+    def test_hampel_filter_qc_method(self):
+        """Test Hampel Filter QC method (stateful)."""
+        print("\n=== Testing Hampel Filter QC Method ===")
+        
+        # Initialize method
+        method = HampelFilterQC(
+            features=self.qc_features,
+            identity_column=self.identity_column,
+            temporal_column=self.temporal_column,
+            score_name=qc_column.HAMPEL_SCORE,
+            window=ROLL_WINDOW,
+            threshold=3.0
+        )
+        
+        # Verify it's a stateful method
+        self.assertIsInstance(method, StatefulQCMethod, "Hampel: should be a StatefulQCMethod")
+        
+        # Fit on training data (warm up buffers)
+        method.fit(self.train_df)
+        
+        # Validate fit results
+        self.assertIsInstance(method.buffers, dict, "Hampel: buffers should be a dict")
+        print(f"  Fitted on {len(self.train_df)} training samples")
+        print(f"  Buffers initialized for {len(method.buffers)} trades")
+        
+        # Score all OOS test days and update state
+        all_scores = []
+        for i, day_df in enumerate(self.test_dfs):
+            scores = method.score_day(day_df)
+            self._validate_scores(scores, day_df, f"Hampel Day {i+1}")
+            all_scores.extend(scores.tolist())
+            
+            # Update state for next day
+            method.update_state(day_df)
+        
+        print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
+        print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
 
 
 
@@ -360,6 +398,14 @@ class TestQCMethodIntegration(BaseQCMethodTest):
                 max_window_size=100,
                 contamination=0.1,
                 use_robust_scaler=True
+            ),
+            'Hampel': HampelFilterQC(
+                features=self.qc_features,
+                identity_column=self.identity_column,
+                temporal_column=self.temporal_column,
+                score_name=qc_column.HAMPEL_SCORE,
+                window=ROLL_WINDOW,
+                threshold=3.0
             )
         }
         
@@ -508,6 +554,40 @@ class TestQCMethodStatefulBehavior(BaseQCMethodTest):
             method.update_state(day_df)
             window_size = len(method._history_window) if hasattr(method, '_history_window') else 0
             print(f"  After day {i+1}: window size = {window_size}")
+    
+    def test_hampel_state_evolution(self):
+        """Test that Hampel Filter method's state evolves correctly."""
+        print("\n=== Testing Hampel Filter State Evolution ===")
+        
+        method = HampelFilterQC(
+            features=self.qc_features,
+            identity_column=self.identity_column,
+            temporal_column=self.temporal_column,
+            score_name=qc_column.HAMPEL_SCORE,
+            window=5,  # Small window for testing
+            threshold=3.0
+        )
+        
+        method.fit(self.train_df)
+        
+        # Track buffer state for a sample trade
+        sample_trade = self.test_dfs[0][self.identity_column].iloc[0]
+        sample_feature = self.qc_features[0]
+        
+        print(f"  Tracking buffer for trade: {sample_trade}, feature: {sample_feature}")
+        
+        # Score and update for multiple days
+        for i, day_df in enumerate(self.test_dfs):
+            scores = method.score_day(day_df)
+            method.update_state(day_df)
+            
+            if sample_trade in method.buffers:
+                buffer_size = len(method.buffers[sample_trade][sample_feature])
+                print(f"    After day {i+1}: buffer size = {buffer_size}")
+        
+        # Buffer should not exceed window size
+        final_buffer_size = len(method.buffers[sample_trade][sample_feature])
+        self.assertLessEqual(final_buffer_size, 5, "Buffer should not exceed window size")
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@ import pandas as pd
 
 from column_names import main_column, qc_column
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC
+from QC_methods.hampel import HampelFilterQC
 from QC_methods.qc_base import StatefulQCMethod
 from Engine.aggregator import ScoreAggregator
 
@@ -92,6 +93,14 @@ class QCEngine:
             'ecdf': ECDFQC(
                 features=self.qc_features,
                 score_name=qc_column.ECDF_SCORE,
+            ),
+            'hampel': HampelFilterQC(
+                features=self.qc_features,
+                identity_column=main_column.TRADE,
+                temporal_column=main_column.DATE,
+                score_name=qc_column.HAMPEL_SCORE,
+                window=self.roll_window,
+                threshold=3.0
             )
         }
         
