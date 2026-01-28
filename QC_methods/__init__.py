@@ -4,6 +4,7 @@ from .robust_z import RobustZScoreQC
 from .iqr import IQRQC
 from .rolling import RollingZScoreQC
 from .lof import LOFQC
+from .ecdf import ECDFQC
 
 __all__ = [
     "IsolationForestQC",
@@ -11,4 +12,5 @@ __all__ = [
     "IQRQC",
     "RollingZScoreQC",
     "LOFQC",
+    "ECDFQC",
 ]

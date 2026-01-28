@@ -5,7 +5,7 @@ from typing import List, Dict
 import pandas as pd
 
 from column_names import main_column, qc_column
-from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC
+from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC
 from QC_methods.qc_base import StatefulQCMethod
 from Engine.aggregator import ScoreAggregator
 
@@ -25,34 +25,21 @@ class QCEngine:
     
     def __init__(self,
                  qc_features: List[str],
-                 weight_if: float,
-                 weight_rz: float,
-                 weight_roll: float,
-                 weight_iqr: float,
-                 weight_lof: float,
+                 weights: dict[str, float],
                  roll_window: int = 20):
         """Initialize QC Engine with features, weights, and configuration.
         
         Args:
             qc_features (List[str]): Features to use for QC scoring.
-            weight_if (float): Weight for Isolation Forest score.
-            weight_rz (float): Weight for Robust Z score.
-            weight_roll (float): Weight for Rolling score.
-            weight_iqr (float): Weight for IQR score.
-            weight_lof (float): Weight for LOF score.
-            roll_window (int, optional): Rolling window size. Defaults to 20.
+            weights (dict[str, float]): Dictionary mapping score column names to weights.
+                Expected keys: qc_column score names (IF_score, RobustZ_score, etc.)
+            roll_window (int): Window size for rolling methods.
         """
         self.qc_features = qc_features
         self.roll_window = roll_window
         
         # Initialize aggregator
-        self.aggregator = ScoreAggregator(
-            weight_if=weight_if,
-            weight_rz=weight_rz,
-            weight_roll=weight_roll,
-            weight_iqr=weight_iqr,
-            weight_lof=weight_lof
-        )
+        self.aggregator = ScoreAggregator(weights=weights)
         
         # Initialize QC methods
         self.qc_methods = self._instantiate_qc_methods()
@@ -101,6 +88,10 @@ class QCEngine:
                 n_neighbors=self.roll_window,
                 contamination=0.1,
                 use_robust_scaler=True
+            ),
+            'ecdf': ECDFQC(
+                features=self.qc_features,
+                score_name=qc_column.ECDF_SCORE,
             )
         }
         

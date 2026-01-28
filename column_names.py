@@ -109,6 +109,7 @@ class QCColumnSet:
     IQR_SCORE: str = "IQR_score"
     AGGREGATED_SCORE: str = "QC_Aggregated"
     LOF_SCORE: str = "LOF_score"
+    ECDF_SCORE: str = "ECDF_score"
     
     # Derived lists (initialized in __post_init__)
     SCORE_COLUMNS: list = None
@@ -121,7 +122,8 @@ class QCColumnSet:
             self.ROLLING_SCORE, 
             self.IQR_SCORE, 
             self.LOF_SCORE,
-            self.AGGREGATED_SCORE, 
+            self.ECDF_SCORE,
+            self.AGGREGATED_SCORE,             
             self.QC_FLAG
         ])
 

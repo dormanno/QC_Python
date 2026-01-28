@@ -11,6 +11,7 @@ import numpy as np
 from typing import List
 
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC
+from QC_methods.ecdf import ECDFQC
 from QC_methods.qc_base import StatefulQCMethod
 from column_names import main_column, pnl_column, qc_column
 from input import PnLInput
@@ -25,8 +26,8 @@ TRAIN_SPLIT = 2/3  # Proportion of data for training
 ROLL_WINDOW = 20
 
 
-class TestIndividualQCMethods(unittest.TestCase):
-    """Test individual QC methods using PNL_Input2.csv"""
+class BaseQCMethodTest(unittest.TestCase):
+    """Base test class with shared setup for all QC method tests."""
     
     @classmethod
     def setUpClass(cls):
@@ -68,6 +69,10 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Train dates: {len(cls.train_dates)} ({len(cls.train_df)} rows)")
         print(f"  Test dates: {len(cls.test_dates)} ({sum(len(df) for df in cls.test_dfs)} rows)")
         print(f"  QC features: {cls.qc_features}")
+
+
+class TestIndividualQCMethods(BaseQCMethodTest):
+    """Test individual QC methods using PNL_Input2.csv"""
     
     def _validate_scores(self, scores: pd.Series, day_df: pd.DataFrame, method_name: str):
         """Helper method to validate score output."""
@@ -90,7 +95,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         self.assertFalse(scores.isna().any(), 
                         f"{method_name}: scores contain NaN values")
     
-    def test_01_iqr_qc_method(self):
+    def test_iqr_qc_method(self):
         """Test IQR QC method."""
         print("\n=== Testing IQR QC Method ===")
         
@@ -123,7 +128,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
     
-    def test_02_isolation_forest_qc_method(self):
+    def test_isolation_forest_qc_method(self):
         """Test Isolation Forest QC method."""
         print("\n=== Testing Isolation Forest QC Method ===")
         
@@ -159,7 +164,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
     
-    def test_03_robust_z_score_qc_method(self):
+    def test_robust_z_score_qc_method(self):
         """Test Robust Z-Score QC method."""
         print("\n=== Testing Robust Z-Score QC Method ===")
         
@@ -193,7 +198,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
     
-    def test_04_rolling_z_score_qc_method(self):
+    def test_rolling_z_score_qc_method(self):
         """Test Rolling Z-Score QC method (stateful)."""
         print("\n=== Testing Rolling Z-Score QC Method ===")
         
@@ -233,7 +238,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
     
-    def test_05_lof_qc_method(self):
+    def test_lof_qc_method(self):
         """Test Local Outlier Factor (LOF) QC method (stateful)."""
         print("\n=== Testing LOF QC Method ===")
         
@@ -272,7 +277,45 @@ class TestIndividualQCMethods(unittest.TestCase):
         print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
         print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
     
-    def test_06_all_methods_produce_different_scores(self):
+    def test_ecdf_qc_method(self):
+        """Test ECDF QC method (stateful)."""
+        print("\n=== Testing ECDF QC Method ===")
+        
+        # Initialize method
+        method = ECDFQC(
+            features=self.qc_features,
+            score_name=qc_column.ECDF_SCORE,
+            window=ROLL_WINDOW,
+            min_samples=30
+        )
+        
+        # Verify it's a stateful method
+        self.assertIsInstance(method, StatefulQCMethod, "ECDF: should be a StatefulQCMethod")
+        
+        # Fit on training data (initialize history)
+        method.fit(self.train_df)
+        
+        print(f"  Fitted on {len(self.train_df)} training samples")
+        
+        # Score all OOS test days and update state
+        all_scores = []
+        for i, day_df in enumerate(self.test_dfs):
+            scores = method.score_day(day_df)
+            self._validate_scores(scores, day_df, f"ECDF Day {i+1}")
+            all_scores.extend(scores.tolist())
+            
+            # Update state for next day
+            method.update_state(day_df)
+        
+        print(f"  Scored {len(self.test_dfs)} OOS days, {sum(len(df) for df in self.test_dfs)} total samples")
+        print(f"  Overall mean score: {np.mean(all_scores):.4f}, max: {np.max(all_scores):.4f}")
+
+
+
+class TestQCMethodIntegration(BaseQCMethodTest):
+    """Integration tests for QC methods: cross-method validation and edge cases."""
+    
+    def test_all_methods_produce_different_scores(self):
         """Test that different methods produce different scores (sanity check)."""
         print("\n=== Testing Score Diversity Across Methods ===")
         
@@ -344,7 +387,7 @@ class TestIndividualQCMethods(unittest.TestCase):
                 )
                 print(f"  {name1} vs {name2}: correlation = {scores[name1].corr(scores[name2]):.4f}")
     
-    def test_07_methods_handle_single_day_constraint(self):
+    def test_methods_handle_single_day_constraint(self):
         """Test that methods properly enforce single-day constraint."""
         print("\n=== Testing Single-Day Constraint ===")
         
@@ -365,7 +408,7 @@ class TestIndividualQCMethods(unittest.TestCase):
         self.assertIn("exactly one valuation date", str(context.exception))
         print("  Multi-day scoring properly rejected")
     
-    def test_08_methods_handle_empty_dataframe(self):
+    def test_methods_handle_empty_dataframe(self):
         """Test that methods properly handle empty DataFrames."""
         print("\n=== Testing Empty DataFrame Handling ===")
         
@@ -387,25 +430,16 @@ class TestIndividualQCMethods(unittest.TestCase):
         print("  Empty DataFrame properly rejected")
 
 
-class TestQCMethodStatefulBehavior(unittest.TestCase):
+class TestQCMethodStatefulBehavior(BaseQCMethodTest):
     """Test stateful behavior specific to Rolling and LOF methods."""
     
     @classmethod
     def setUpClass(cls):
-        """Load and prepare test data once for all tests."""
-        input_path = os.path.join(ORIGINAL_INPUT_DIRECTORY, TEST_INPUT_FILE)
-        input_handler = PnLInput()
-        cls.raw_df = pd.read_csv(input_path)
-        cls.engineered_df = input_handler.input_post_process(cls.raw_df)
-        cls.qc_features = pnl_column.QC_FEATURES
-        cls.identity_column = main_column.TRADE
-        cls.temporal_column = main_column.DATE
-        cls.engineered_df = cls.engineered_df.sort_values(cls.temporal_column).reset_index(drop=True)
-        cls.unique_dates = sorted(cls.engineered_df[cls.temporal_column].unique())
+        """Load and prepare test data, using only 3 days for stateful behavior tests."""
+        super().setUpClass()  # Call parent setup
+        # Override test_dates to use only 3 days for faster stateful tests
         train_size = int(len(cls.unique_dates) * TRAIN_SPLIT)
-        cls.train_dates = cls.unique_dates[:train_size]
-        cls.test_dates = cls.unique_dates[train_size:train_size + 3]  # Use 3 days for stateful behavior tests
-        cls.train_df = cls.engineered_df[cls.engineered_df[cls.temporal_column].isin(cls.train_dates)].copy()
+        cls.test_dates = cls.unique_dates[train_size:train_size + 3]
         cls.test_dfs = [
             cls.engineered_df[cls.engineered_df[cls.temporal_column] == date].copy()
             for date in cls.test_dates

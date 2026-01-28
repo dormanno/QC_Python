@@ -1,7 +1,7 @@
 """Command-line interface for running QC orchestration."""
 
 import logging
-from column_names import pnl_column
+from column_names import pnl_column, qc_column
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
 from qc_orchestrator import QCOrchestrator
@@ -26,11 +26,14 @@ def main():
     ]
     
     # Define aggregator weights
-    weight_if = 0.2
-    weight_rz = 0.2
-    weight_roll = 0.2
-    weight_iqr = 0.2
-    weight_lof = 0.2
+    weights = {
+        qc_column.IF_SCORE: 0.2,
+        qc_column.ROBUST_Z_SCORE: 0.1,
+        qc_column.ROLLING_SCORE: 0.1,
+        qc_column.IQR_SCORE: 0.2,
+        qc_column.LOF_SCORE: 0.2,
+        qc_column.ECDF_SCORE: 0.2
+    }
     roll_window = 20
     
     # Create feature normalizer
@@ -39,11 +42,7 @@ def main():
     # Create QC Engine
     qc_engine = QCEngine(
         qc_features=qc_features,
-        weight_if=weight_if,
-        weight_rz=weight_rz,
-        weight_roll=weight_roll,
-        weight_iqr=weight_iqr,
-        weight_lof=weight_lof,
+        weights=weights,
         roll_window=roll_window
     )
     

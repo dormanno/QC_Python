@@ -11,11 +11,14 @@ from column_names import pnl_column, cds_column, qc_column, cdi_column
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 # Define aggregator weights
-WEIGHT_IF = 0.2
-WEIGHT_RZ = 0.2
-WEIGHT_ROLL = 0.2
-WEIGHT_IQR = 0.2
-WEIGHT_LOF = 0.2
+WEIGHTS = {
+    qc_column.IF_SCORE: 0.2,
+    qc_column.ROBUST_Z_SCORE: 0.1,
+    qc_column.ROLLING_SCORE: 0.1,
+    qc_column.IQR_SCORE: 0.2,
+    qc_column.LOF_SCORE: 0.2,
+    qc_column.ECDF_SCORE: 0.2
+}
 
 ROLL_WINDOW = 20
 
@@ -31,11 +34,7 @@ class TestQCOrchestrator(unittest.TestCase):
         # Create QC Engine
         qc_engine = QCEngine(
             qc_features=qc_features,
-            weight_if=WEIGHT_IF,
-            weight_rz=WEIGHT_RZ,
-            weight_roll=WEIGHT_ROLL,
-            weight_iqr=WEIGHT_IQR,
-            weight_lof=WEIGHT_LOF,
+            weights=WEIGHTS,
             roll_window=ROLL_WINDOW
         )
         
