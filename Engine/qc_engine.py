@@ -5,6 +5,7 @@ from typing import List, Dict
 import pandas as pd
 
 from column_names import main_column, qc_column
+from qc_method_definitions import QCMethod, QCMethods
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC
 from QC_methods.hampel import HampelFilterQC
 from QC_methods.qc_base import StatefulQCMethod
@@ -26,34 +27,57 @@ class QCEngine:
     
     def __init__(self,
                  qc_features: List[str],
-                 weights: dict[str, float],
+                 methods_config: dict[QCMethod, float],
                  roll_window: int = 20):
-        """Initialize QC Engine with features, weights, and configuration.
+        """Initialize QC Engine with features, method configuration, and window size.
         
         Args:
             qc_features (List[str]): Features to use for QC scoring.
-            weights (dict[str, float]): Dictionary mapping score column names to weights.
-                Expected keys: qc_column score names (IF_score, RobustZ_score, etc.)
+            methods_config (dict[QCMethod, float]): Dictionary mapping QCMethod instances to weights.
+                Keys are QCMethod instances (e.g., QCMethods.ISOLATION_FOREST).
+                Values are weights (floats) for aggregation.
+                Only methods included in this dict will be enabled.
             roll_window (int): Window size for rolling methods.
         """
         self.qc_features = qc_features
         self.roll_window = roll_window
+        self.methods_config = methods_config
+        
+        # Validate that all keys are QCMethod instances
+        available_methods = {m.name for m in QCMethods.all_methods()}
+        for method in methods_config.keys():
+            if not isinstance(method, QCMethod):
+                raise TypeError(
+                    f"All keys in methods_config must be QCMethod instances. "
+                    f"Got: {type(method)}. Use QCMethods.ISOLATION_FOREST, etc."
+                )
+            if method.name not in available_methods:
+                raise ValueError(
+                    f"Unknown method: {method.name}. "
+                    f"Valid options: {list(available_methods)}"
+                )
+        
+        # Initialize QC methods
+        self.qc_methods = self._instantiate_qc_methods()
+        
+        # Convert methods_config to weights dict (QCMethod -> score_column_name)
+        weights = {method.score_name: weight 
+                   for method, weight in methods_config.items()}
         
         # Initialize aggregator
         self.aggregator = ScoreAggregator(weights=weights)
         
-        # Initialize QC methods
-        self.qc_methods = self._instantiate_qc_methods()
-        logger.info(f"QC Engine initialized with {len(self.qc_methods)} methods")
+        logger.info(f"QC Engine initialized with {len(self.qc_methods)} methods: {list(self.qc_methods.keys())}")
     
     def _instantiate_qc_methods(self) -> Dict:
-        """Instantiate all QC scoring methods.
+        """Instantiate QC scoring methods based on methods_config.
         
         Returns:
-            Dict: Dictionary of QC method instances keyed by method type.
+            Dict: Dictionary of QC method instances keyed by method name.
         """
-        methods = {
-            'isolation_forest': IsolationForestQC(
+        # Define all available methods with their QCMethod keys
+        all_methods = {
+            QCMethods.ISOLATION_FOREST.name: IsolationForestQC(
                 base_feats=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,
@@ -65,24 +89,24 @@ class QCEngine:
                 max_samples=256,
                 contamination=0.01,
             ),
-            'robust_z': RobustZScoreQC(
+            QCMethods.ROBUST_Z.name: RobustZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.ROBUST_Z_SCORE,
             ),
-            'iqr': IQRQC(
+            QCMethods.IQR.name: IQRQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.IQR_SCORE,
             ),
-            'rolling': RollingZScoreQC(
+            QCMethods.ROLLING.name: RollingZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,
                 score_name=qc_column.ROLLING_SCORE,
                 window=self.roll_window
             ),
-            'lof': LOFQC(
+            QCMethods.LOF.name: LOFQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.LOF_SCORE,
@@ -90,11 +114,11 @@ class QCEngine:
                 contamination=0.1,
                 use_robust_scaler=True
             ),
-            'ecdf': ECDFQC(
+            QCMethods.ECDF.name: ECDFQC(
                 features=self.qc_features,
                 score_name=qc_column.ECDF_SCORE,
             ),
-            'hampel': HampelFilterQC(
+            QCMethods.HAMPEL.name: HampelFilterQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,
@@ -103,6 +127,10 @@ class QCEngine:
                 threshold=3.0
             )
         }
+        
+        # Only instantiate methods specified in methods_config
+        enabled_method_names = {method.name for method in self.methods_config.keys()}
+        methods = {name: impl for name, impl in all_methods.items() if name in enabled_method_names}
         
         logger.info(f"Instantiated {len(methods)} QC methods: {list(methods.keys())}")
         return methods

@@ -8,17 +8,19 @@ from Engine.qc_engine import QCEngine
 from Engine.feature_normalizer import FeatureNormalizer
 from input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from column_names import pnl_column, cds_column, qc_column, cdi_column
+from qc_method_definitions import QCMethods
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
-# Define aggregator weights
-WEIGHTS = {
-    qc_column.IF_SCORE: 0.2,
-    qc_column.ROBUST_Z_SCORE: 0.1,
-    qc_column.ROLLING_SCORE: 0.1,
-    qc_column.IQR_SCORE: 0.1,
-    qc_column.LOF_SCORE: 0.2,
-    qc_column.ECDF_SCORE: 0.2,
-    qc_column.HAMPEL_SCORE: 0.1
+
+# Define method configuration (QCMethod -> weight)
+METHODS_CONFIG = {
+    QCMethods.ISOLATION_FOREST: 0.2,
+    QCMethods.ROBUST_Z: 0.1,
+    QCMethods.ROLLING: 0.1,
+    QCMethods.IQR: 0.1,
+    QCMethods.LOF: 0.2,
+    QCMethods.ECDF: 0.2,
+    QCMethods.HAMPEL: 0.1
 }
 
 ROLL_WINDOW = 20
@@ -35,7 +37,7 @@ class TestQCOrchestrator(unittest.TestCase):
         # Create QC Engine
         qc_engine = QCEngine(
             qc_features=qc_features,
-            weights=WEIGHTS,
+            methods_config=METHODS_CONFIG,
             roll_window=ROLL_WINDOW
         )
         
