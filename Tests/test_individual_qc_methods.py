@@ -8,13 +8,12 @@ import unittest
 import os
 import pandas as pd
 import numpy as np
-from typing import List
 
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC, HampelFilterQC
 
 from QC_methods.qc_base import StatefulQCMethod
 from column_names import main_column, pnl_column, qc_column
-from input import PnLInput
+from IO.input import PnLInput
 
 # Test data path
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"

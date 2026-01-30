@@ -2,11 +2,11 @@
 
 import logging
 from column_names import pnl_column
-from qc_method_definitions import QCMethods
+from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
 from qc_orchestrator import QCOrchestrator
-from input import PnLInput
+from IO.input import PnLInput
 
 
 def main():
@@ -29,13 +29,13 @@ def main():
     # Define method configuration (QCMethod -> weight)
     # Only methods listed here will be enabled
     methods_config = {
-        QCMethods.ISOLATION_FOREST: 0.2,
-        QCMethods.ROBUST_Z: 0.1,
-        QCMethods.ROLLING: 0.1,
-        QCMethods.IQR: 0.1,
-        QCMethods.LOF: 0.2,
-        QCMethods.ECDF: 0.2,
-        QCMethods.HAMPEL: 0.1
+        QCMethodDefinitions.ISOLATION_FOREST: 0.2,
+        QCMethodDefinitions.ROBUST_Z: 0.1,
+        QCMethodDefinitions.ROLLING: 0.1,
+        QCMethodDefinitions.IQR: 0.1,
+        QCMethodDefinitions.LOF: 0.2,
+        QCMethodDefinitions.ECDF: 0.2,
+        QCMethodDefinitions.HAMPEL: 0.1
     }
     roll_window = 20
     

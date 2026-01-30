@@ -5,23 +5,22 @@ import tempfile
 import shutil
 from Engine import qc_engine_presets
 from qc_orchestrator import QCOrchestrator
-from Engine.qc_engine import QCEngine
 from Engine.feature_normalizer import FeatureNormalizer
-from input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
-from column_names import pnl_column, cds_column, qc_column, cdi_column
-from qc_method_definitions import QCMethods
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
+from column_names import pnl_column, cds_column, cdi_column
+from QC_methods.qc_method_definitions import QCMethodDefinitions
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
 # Define method configuration (QCMethod -> weight)
 METHODS_CONFIG = {
-    QCMethods.ISOLATION_FOREST: 0.2,
-    QCMethods.ROBUST_Z: 0.1,
-    QCMethods.ROLLING: 0.1,
-    QCMethods.IQR: 0.1,
-    QCMethods.LOF: 0.2,
-    QCMethods.ECDF: 0.2,
-    QCMethods.HAMPEL: 0.1
+    QCMethodDefinitions.ISOLATION_FOREST: 0.2,
+    QCMethodDefinitions.ROBUST_Z: 0.1,
+    QCMethodDefinitions.ROLLING: 0.1,
+    QCMethodDefinitions.IQR: 0.1,
+    QCMethodDefinitions.LOF: 0.2,
+    QCMethodDefinitions.ECDF: 0.2,
+    QCMethodDefinitions.HAMPEL: 0.1
 }
 
 

@@ -5,7 +5,7 @@ from typing import List, Dict
 import pandas as pd
 
 from column_names import main_column, qc_column
-from qc_method_definitions import QCMethod, QCMethods
+from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC
 from QC_methods.hampel import HampelFilterQC
 from QC_methods.qc_base import StatefulQCMethod
@@ -27,7 +27,7 @@ class QCEngine:
     
     def __init__(self,
                  qc_features: List[str],
-                 methods_config: dict[QCMethod, float],
+                 methods_config: dict[QCMethodDefinition, float],
                  roll_window: int = 20):
         """Initialize QC Engine with features, method configuration, and window size.
         
@@ -44,9 +44,9 @@ class QCEngine:
         self.methods_config = methods_config
         
         # Validate that all keys are QCMethod instances
-        available_methods = {m.name for m in QCMethods.all_methods()}
+        available_methods = {m.name for m in QCMethodDefinitions.all_methods()}
         for method in methods_config.keys():
-            if not isinstance(method, QCMethod):
+            if not isinstance(method, QCMethodDefinition):
                 raise TypeError(
                     f"All keys in methods_config must be QCMethod instances. "
                     f"Got: {type(method)}. Use QCMethods.ISOLATION_FOREST, etc."
@@ -77,7 +77,7 @@ class QCEngine:
         """
         # Define all available methods with their QCMethod keys
         all_methods = {
-            QCMethods.ISOLATION_FOREST.name: IsolationForestQC(
+            QCMethodDefinitions.ISOLATION_FOREST.name: IsolationForestQC(
                 base_feats=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,
@@ -89,24 +89,24 @@ class QCEngine:
                 max_samples=256,
                 contamination=0.01,
             ),
-            QCMethods.ROBUST_Z.name: RobustZScoreQC(
+            QCMethodDefinitions.ROBUST_Z.name: RobustZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.ROBUST_Z_SCORE,
             ),
-            QCMethods.IQR.name: IQRQC(
+            QCMethodDefinitions.IQR.name: IQRQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.IQR_SCORE,
             ),
-            QCMethods.ROLLING.name: RollingZScoreQC(
+            QCMethodDefinitions.ROLLING.name: RollingZScoreQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,
                 score_name=qc_column.ROLLING_SCORE,
                 window=self.roll_window
             ),
-            QCMethods.LOF.name: LOFQC(
+            QCMethodDefinitions.LOF.name: LOFQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 score_name=qc_column.LOF_SCORE,
@@ -114,11 +114,11 @@ class QCEngine:
                 contamination=0.1,
                 use_robust_scaler=True
             ),
-            QCMethods.ECDF.name: ECDFQC(
+            QCMethodDefinitions.ECDF.name: ECDFQC(
                 features=self.qc_features,
                 score_name=qc_column.ECDF_SCORE,
             ),
-            QCMethods.HAMPEL.name: HampelFilterQC(
+            QCMethodDefinitions.HAMPEL.name: HampelFilterQC(
                 features=self.qc_features,
                 identity_column=main_column.TRADE,
                 temporal_column=main_column.DATE,

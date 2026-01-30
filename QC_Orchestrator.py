@@ -2,9 +2,9 @@ import logging
 import pandas as pd
 from typing import List, Tuple
 
-from input import Input
-from output import Output
-from column_names import main_column, qc_column
+from IO.input import Input
+from IO.output import Output
+from column_names import main_column
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
 
