@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import tempfile
 import shutil
+from Engine import qc_engine_presets
 from qc_orchestrator import QCOrchestrator
 from Engine.qc_engine import QCEngine
 from Engine.feature_normalizer import FeatureNormalizer
@@ -23,24 +24,20 @@ METHODS_CONFIG = {
     QCMethods.HAMPEL: 0.1
 }
 
+
 ROLL_WINDOW = 20
 
 class TestQCOrchestrator(unittest.TestCase):
-    def _run_qc_test(self, columnSet, original_input_file, input_handler):
-        """Helper method to run QC test with specified column configuration and input file."""
-        # Define features for QC
-        qc_features = columnSet.QC_FEATURES
+    
+    def _run_qc_test(self, original_input_file, input_handler, columnSet, qc_engine):
+        """Helper method to run QC test with specified column configuration and input file.
         
-        # Create feature normalizer
-        normalizer = FeatureNormalizer(features=qc_features)
-        
-        # Create QC Engine
-        qc_engine = QCEngine(
-            qc_features=qc_features,
-            methods_config=METHODS_CONFIG,
-            roll_window=ROLL_WINDOW
-        )
-        
+        Args:            
+            original_input_file: Input file name
+            input_handler: Input handler instance
+            columnSet: Column set instance
+            qc_engine: QCEngine instance
+        """          
         
         # Create a temporary directory for the test
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -53,6 +50,8 @@ class TestQCOrchestrator(unittest.TestCase):
             raw_input_df = pd.read_csv(temp_input_path)
             input_rows = len(raw_input_df)
             input_cols = len(raw_input_df.columns)
+
+            normalizer = FeatureNormalizer(features=columnSet.QC_FEATURES)
 
             # Run the orchestrator
             try:
@@ -78,7 +77,9 @@ class TestQCOrchestrator(unittest.TestCase):
             self.assertEqual(len(output_df), input_rows, f"Output rows {len(output_df)} != input rows {input_rows}")
 
             # 5. Output file should have original columns plus engineered and QC score columns
-            expected_cols = input_cols + columnSet.ENGINEERED_FEATURES.__len__() + qc_column.SCORE_COLUMNS.__len__()
+            # Get actual score columns from the QC engine being used
+            actual_score_cols_count = len(qc_engine.get_score_columns())
+            expected_cols = input_cols + columnSet.ENGINEERED_FEATURES.__len__() + actual_score_cols_count
             self.assertEqual(len(output_df.columns), expected_cols, f"Output columns {len(output_df.columns)} != expected {expected_cols}")
 
             # Copy output back to original directory for review
@@ -86,15 +87,26 @@ class TestQCOrchestrator(unittest.TestCase):
 
     def test_QC_PnL(self):
         """Test QC for PnL data."""
-        self._run_qc_test(pnl_column, "PnL_Input2.csv", PnLInput())
+        self._run_qc_test(
+            "PnL_Input2.csv", 
+            PnLInput(), 
+            pnl_column, 
+            qc_engine_presets.engine_temporal_multivariate_pnl)
     
     def test_QC_CreditDeltaSingle(self):
         """Test QC for Credit Delta Single data."""        
-        self._run_qc_test(cds_column, "CreditDeltaSingle_Input.csv", CreditDeltaSingleInput())
+        self._run_qc_test(
+            "CreditDeltaSingle_Input.csv", 
+            CreditDeltaSingleInput(),
+            cds_column, 
+            qc_engine_presets.engine_reactive_univariate_cds)
 
     def test_QC_CreditDeltaIndex(self):
         """Test QC for Credit Delta Index data."""        
-        self._run_qc_test(cdi_column, "CreditDeltaIndex_Input.csv", CreditDeltaIndexInput())
-
+        self._run_qc_test(
+            "CreditDeltaIndex_Input.csv", 
+            CreditDeltaIndexInput(), 
+            cdi_column, 
+            qc_engine_presets.engine_robust_univariate_cdi)
 if __name__ == '__main__':
     unittest.main()

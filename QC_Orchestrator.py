@@ -138,13 +138,16 @@ class QCOrchestrator:
         logger.info(f"Generated scores for {len(oos_scores)} OOS rows")
 
         # 6) Export full dataset with scores
+        # Get actual score columns from the engine's configured methods
+        actual_score_cols = self.qc_engine.get_score_columns()
+        
         out_path = self.output_handler.export_full_dataset(
             full_data_set=full_data_set,
             oos_scores=oos_scores,
             input_path=input_path,
-            score_cols=qc_column.SCORE_COLUMNS,
+            score_cols=actual_score_cols,
             suffix="_with_scores"
-        )
+        )        
         logger.info(f"Output written to: {out_path}")
         return out_path
 

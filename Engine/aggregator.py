@@ -18,11 +18,12 @@ class ScoreAggregator:
         """
         Args:
             weights: Dictionary mapping score column names to weights. 
-                     Expected keys: qc_column score names (IF_score, RobustZ_score, etc.)
+                     Keys should be qc_column score names (IF_score, RobustZ_score, etc.)
+                     Can include any subset of available methods.
             amber_lo: Lower threshold for amber flag
             red_lo: Lower threshold for red flag
         """
-        expected_keys = {
+        available_keys = {
             qc_column.IF_SCORE,
             qc_column.ROBUST_Z_SCORE,
             qc_column.ROLLING_SCORE,
@@ -31,9 +32,13 @@ class ScoreAggregator:
             qc_column.ECDF_SCORE,
             qc_column.HAMPEL_SCORE
         }
-        if set(weights.keys()) != expected_keys:
-            raise ValueError(f"Weights must contain exactly these keys: {expected_keys}")
         
+        # Validate that all provided keys are valid score names
+        invalid_keys = set(weights.keys()) - available_keys
+        if invalid_keys:
+            raise ValueError(f"Invalid score names: {invalid_keys}. Valid options: {available_keys}")
+        
+        # Validate weights sum to 1
         weight_sum = sum(weights.values())
         if abs(weight_sum - 1.0) > 1e-9:
             raise ValueError(f"Weights must sum to 1. Current sum: {weight_sum}")
@@ -44,16 +49,25 @@ class ScoreAggregator:
         self.amber_lo, self.red_lo = amber_lo, red_lo
 
     def combine(self, df: pd.DataFrame) -> pd.Series:
-        # expects columns: IF_score, RobustZ_score, Rolling_score, IQR_score, LOF_score, ECDF_score, Hampel_score
-        return (
-            self.weights[qc_column.IF_SCORE]      * df[qc_column.IF_SCORE]
-          + self.weights[qc_column.ROBUST_Z_SCORE] * df[qc_column.ROBUST_Z_SCORE]
-          + self.weights[qc_column.ROLLING_SCORE]  * df[qc_column.ROLLING_SCORE]
-          + self.weights[qc_column.IQR_SCORE]      * df[qc_column.IQR_SCORE]
-          + self.weights[qc_column.LOF_SCORE]      * df[qc_column.LOF_SCORE]
-          + self.weights[qc_column.ECDF_SCORE]     * df[qc_column.ECDF_SCORE]
-          + self.weights[qc_column.HAMPEL_SCORE]   * df[qc_column.HAMPEL_SCORE]
-        ).rename(qc_column.AGGREGATED_SCORE)
+        """Combine scores from configured methods using weighted average.
+        
+        Args:
+            df: DataFrame containing score columns for configured methods
+            
+        Returns:
+            Series with aggregated scores
+        """
+        # Start with zeros
+        result = pd.Series(0.0, index=df.index)
+        
+        # Add weighted contribution from each configured method
+        for score_column, weight in self.weights.items():
+            if score_column in df.columns:
+                result += weight * df[score_column]
+            else:
+                raise ValueError(f"Expected score column '{score_column}' not found in DataFrame")
+        
+        return result.rename(qc_column.AGGREGATED_SCORE)
 
     def map_to_flag(self, agg: pd.Series) -> pd.Series:
         """

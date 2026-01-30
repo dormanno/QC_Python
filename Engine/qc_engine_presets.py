@@ -5,18 +5,9 @@ This module demonstrates how to instantiate QCEngine with various
 combinations of QC methods using QCMethod dataclass instances.
 """
 
-from column_names import pnl_column
+from column_names import pnl_column, cds_column, cdi_column
 from qc_method_definitions import QCMethods
 from Engine.qc_engine import QCEngine
-
-# Define QC features (common to all examples)
-qc_features = [
-    pnl_column.START, 
-    *pnl_column.SLICE_COLUMNS, 
-    pnl_column.TOTAL, 
-    pnl_column.EXPLAINED, 
-    pnl_column.UNEXPLAINED
-]
 
 # ============================================================================
 # Example 1: Use ALL methods
@@ -31,8 +22,8 @@ methods_config_all = {
     QCMethods.HAMPEL: 0.1
 }
 
-engine_all_methods = QCEngine(
-    qc_features=qc_features,
+engine_all_methods_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_all,
     roll_window=20
 )
@@ -47,8 +38,8 @@ methods_config_statistical = {
     QCMethods.HAMPEL: 0.25
 }
 
-engine_statistical = QCEngine(
-    qc_features=qc_features,
+engine_statistical_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_statistical,
     roll_window=20
 )
@@ -62,8 +53,8 @@ methods_config_ml = {
     QCMethods.ECDF: 0.33
 }
 
-engine_ml = QCEngine(
-    qc_features=qc_features,
+engine_ml_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_ml,
     roll_window=20
 )
@@ -77,8 +68,8 @@ methods_config_fast = {
     QCMethods.ECDF: 0.3
 }
 
-engine_fast = QCEngine(
-    qc_features=qc_features,
+engine_fast_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_fast,
     roll_window=20
 )
@@ -92,8 +83,8 @@ methods_config_temporal = {
     QCMethods.HAMPEL: 0.35
 }
 
-engine_temporal = QCEngine(
-    qc_features=qc_features,
+engine_temporal_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_temporal,
     roll_window=20
 )
@@ -101,13 +92,13 @@ engine_temporal = QCEngine(
 # ============================================================================
 # Example 6: Single method for testing/debugging
 # ============================================================================
-methods_config_single = {
+methods_config_IF = {
     QCMethods.ISOLATION_FOREST: 1.0
 }
 
-engine_single = QCEngine(
-    qc_features=qc_features,
-    methods_config=methods_config_single,
+engine_IF_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
+    methods_config=methods_config_IF,
     roll_window=20
 )
 
@@ -121,9 +112,50 @@ methods_config_balanced = {
     QCMethods.ROLLING: 0.25
 }
 
-engine_balanced = QCEngine(
-    qc_features=qc_features,
+engine_balanced_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_balanced,
+    roll_window=20
+)
+
+method_config_temporal_multivariate = {
+    QCMethods.ISOLATION_FOREST: 0.25,
+    QCMethods.ROLLING: 0.15,
+    QCMethods.HAMPEL: 0.10,
+    QCMethods.ROBUST_Z: 0.15,
+    QCMethods.LOF: 0.20,
+    QCMethods.ECDF: 0.15
+}
+
+engine_temporal_multivariate_pnl = QCEngine(
+    qc_features=pnl_column.QC_FEATURES,
+    methods_config=method_config_temporal_multivariate,
+    roll_window=20
+)
+
+methods_config_robust_univariate = {
+    QCMethods.ROBUST_Z: 0.35,
+    QCMethods.IQR: 0.20,
+    QCMethods.ECDF: 0.25,
+    QCMethods.HAMPEL: 0.20
+}
+
+engine_robust_univariate_cdi = QCEngine(
+    qc_features=cdi_column.QC_FEATURES,
+    methods_config=methods_config_robust_univariate,
+    roll_window=20
+)
+
+methods_reactive_univariate = {
+    QCMethods.ROBUST_Z: 0.30,    
+    QCMethods.ECDF: 0.25,
+    QCMethods.HAMPEL: 0.25,
+    QCMethods.ROLLING: 0.20
+}
+
+engine_reactive_univariate_cds = QCEngine(
+    qc_features=cds_column.QC_FEATURES,
+    methods_config=methods_reactive_univariate,
     roll_window=20
 )
 
