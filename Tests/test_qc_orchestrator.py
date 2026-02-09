@@ -87,7 +87,8 @@ class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):
         """Test QC for PnL data."""
         self._run_qc_test(
-            "PnL_Input2.csv", 
+            # "PnL_Input2.csv", 
+            "PnL_Input_Injected.csv",
             PnLInput(), 
             pnl_column, 
             qc_engine_presets.engine_temporal_multivariate_pnl)

@@ -13,14 +13,16 @@ class FeatureColumnSet(ABC):
 @dataclass(frozen=True)
 class MainColumnSet:
     """Main trade identifier columns"""
+    RECORD_TYPE: str = "RecordType"
     TRADE: str = "TradeID"
-    BOOK: str = "Book"
+    BOOK: str = "Book"    
     TRADE_TYPE: str = "TradeType"
     DATE: str = "Date"
     MAIN_COLUMNS: list = None
 
     def __post_init__(self):
         object.__setattr__(self, 'MAIN_COLUMNS', [
+                self.RECORD_TYPE,
                 self.TRADE, 
                 self.BOOK,
                 self.TRADE_TYPE,

@@ -17,7 +17,8 @@ from IO.input import PnLInput
 
 # Test data path
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
-TEST_INPUT_FILE = "PNL_Input2.csv"
+# TEST_INPUT_FILE = "PNL_Input2.csv"
+TEST_INPUT_FILE = "PnL_Input_Injected.csv"
 
 # Test configuration - using entire dataset
 # Split: first 2/3 for training, last 1/3 for OOS testing

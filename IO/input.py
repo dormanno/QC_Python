@@ -59,6 +59,11 @@ class Input:
         df['Date'] = pd.to_datetime(df['Date'], format="%Y%m%d")
         self._assert_expected_columns(df)
 
+        if main_column.RECORD_TYPE in df.columns:
+            record_col = df[main_column.RECORD_TYPE]
+            if record_col.isna().any() or record_col.astype(str).str.strip().eq("").any():
+                raise ValueError("RecordType must be defined for all records when column is present")
+
         if parse_dates and main_column.DATE in df.columns:
             df[main_column.DATE] = pd.to_datetime(df[main_column.DATE], format=self.DATE_FORMAT)
 

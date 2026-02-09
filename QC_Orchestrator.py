@@ -64,6 +64,44 @@ class QCOrchestrator:
         
         logger.info(f"Split data: {len(dates)} total dates, {train_days} train, {len(oos_dates)} OOS")
         return train_df, oos_dates
+
+    def _split_train_test_by_record_type(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
+        """Split data into train/test sets based on RecordType column.
+
+        Uses rows with RecordType == "Train" for training and all other rows as OOS.
+
+        Args:
+            df (pd.DataFrame): Full dataset.
+
+        Returns:
+            Tuple containing:
+                - Training DataFrame (RecordType == "Train")
+                - List of OOS dates (from rows where RecordType != "Train")
+
+        Raises:
+            ValueError: If there is no training or OOS data.
+        """
+        record_col = main_column.RECORD_TYPE
+        train_df = df.loc[df[record_col] == "Train"].copy()
+        oos_df = df.loc[df[record_col] != "Train"].copy()
+
+        if train_df.empty:
+            raise ValueError("No training data found: RecordType == 'Train' returned 0 rows")
+        if oos_df.empty:
+            raise ValueError("No OOS data found: RecordType != 'Train' returned 0 rows")
+
+        train_dates = set(train_df[main_column.DATE].drop_duplicates())
+        oos_df = oos_df.loc[~oos_df[main_column.DATE].isin(train_dates)].copy()
+
+        if oos_df.empty:
+            raise ValueError("No OOS data found after removing dates that overlap with Train")
+
+        oos_dates = oos_df[main_column.DATE].drop_duplicates().sort_values().to_list()
+        logger.info(
+            f"Split data by RecordType: {len(train_df)} train rows, {len(oos_df)} OOS rows, "
+            f"{len(oos_dates)} OOS dates"
+        )
+        return train_df, oos_dates
     
     def _prepare_training_data(self, raw_train_df: pd.DataFrame) -> pd.DataFrame:
         """Fit normalizer and normalize training data.
@@ -100,8 +138,11 @@ class QCOrchestrator:
         full_data_set = full_data_set.sort_values(main_column.DATE)
         logger.info(f"Loaded {len(full_data_set)} rows with {full_data_set[main_column.DATE].nunique()} unique dates")
 
-        # 2) Split train / OOS by date
-        raw_train_data, oos_dates = self._split_train_test_by_date(full_data_set)
+        # 2) Split train / OOS by RecordType (if present) or by date
+        if main_column.RECORD_TYPE in full_data_set.columns:
+            raw_train_data, oos_dates = self._split_train_test_by_record_type(full_data_set)
+        else:
+            raw_train_data, oos_dates = self._split_train_test_by_date(full_data_set)
 
         # 3) Fit normalizer and prepare training data
         train_data = self._prepare_training_data(raw_train_data)
