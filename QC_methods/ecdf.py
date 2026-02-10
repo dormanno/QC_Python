@@ -69,8 +69,11 @@ class ECDFQC(StatefulQCMethod):
                 # ECDF
                 F_x = np.mean(hist <= x)
 
-                # two-sided tail probability
-                score = 2.0 * min(F_x, 1.0 - F_x)
+                # normalizing two-sided tail probability into [0,1] score with 0.5 at median, higher = more anomalous
+                raw_score = 2.0 * min(F_x, 1.0 - F_x)
+                # inverting to fit framework convention (higher score = more anomalous)
+                score = 1.0 - raw_score  
+
                 feature_scores.append(score)
             
             if len(feature_scores) == 0:
