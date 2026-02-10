@@ -1,7 +1,8 @@
 """QC Engine that encapsulates QC methods and scoring logic."""
 
+import copy
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 import pandas as pd
 
 from column_names import main_column, qc_column
@@ -10,6 +11,7 @@ from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC
 from QC_methods.hampel import HampelFilterQC
 from QC_methods.qc_base import StatefulQCMethod
 from Engine.aggregator import ScoreAggregator
+from Engine.score_normalizer import ScoreNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,8 @@ class QCEngine:
     def __init__(self,
                  qc_features: List[str],
                  methods_config: dict[QCMethodDefinition, float],
-                 roll_window: int = 20):
+                 roll_window: int = 20,
+                 score_normalizer: Optional[ScoreNormalizer] = None):
         """Initialize QC Engine with features, method configuration, and window size.
         
         Args:
@@ -38,10 +41,14 @@ class QCEngine:
                 Values are weights (floats) for aggregation.
                 Only methods included in this dict will be enabled.
             roll_window (int): Window size for rolling methods.
+            score_normalizer (ScoreNormalizer): Quantile normalizer instance for score-level normalization.
         """
         self.qc_features = qc_features
         self.roll_window = roll_window
         self.methods_config = methods_config
+        if score_normalizer is None:
+            raise ValueError("score_normalizer must be provided when constructing QCEngine.")
+        self.score_normalizer = score_normalizer
         
         # Validate that all keys are QCMethod instances
         available_methods = {m.name for m in QCMethodDefinitions.all_methods()}
@@ -59,6 +66,12 @@ class QCEngine:
         
         # Initialize QC methods
         self.qc_methods = self._instantiate_qc_methods()
+
+        # Skip normalization for methods already producing quantiles (e.g., ECDF)
+        self._skip_normalization_cols = {
+            method.ScoreName for method in self.qc_methods.values()
+            if getattr(method, "RequiresNormalization", True) is False
+        }
         
         # Convert methods_config to weights dict (QCMethod -> score_column_name)
         weights = {method.score_name: weight 
@@ -159,6 +172,9 @@ class QCEngine:
         for name, method in self.qc_methods.items():
             method.fit(train_data)
             logger.info(f"Fitted {name} on training data")
+
+        # Fit score normalizer on TRAIN scores (no look-ahead in scoring order)
+        self._fit_score_normalizer(train_data)
     
     def score_day(self, day_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
         """Score a single day's data with all QC methods and aggregate.
@@ -172,13 +188,13 @@ class QCEngine:
                 - aggregated_score (pd.Series): Weighted aggregated score
                 - qc_flag (pd.DataFrame): Traffic-light flags (GREEN/AMBER/RED)
         """
-        # Score with each method dynamically
-        scores = {method.ScoreName: method.score_day(day_data) 
-                  for method in self.qc_methods.values()}
-        
-        # Aggregate scores
-        day_scores = pd.concat(scores.values(), axis=1)
-        day_scores.columns = scores.keys()
+        # Score with each method dynamically (raw)
+        day_scores_raw = self._score_day_raw(day_data, self.qc_methods)
+
+        # Normalize scores (skip ECDF)
+        day_scores = self._normalize_scores(day_scores_raw)
+
+        # Aggregate normalized scores
         aggregated_score = self.aggregator.combine(day_scores)
         qc_flag = self.aggregator.map_to_flag(aggregated_score).to_frame()
         
@@ -195,3 +211,46 @@ class QCEngine:
         for method in self.qc_methods.values():
             if isinstance(method, StatefulQCMethod):
                 method.update_state(day_data)
+
+    def _score_day_raw(self, day_data: pd.DataFrame, methods: Dict) -> pd.DataFrame:
+        """Score a single day and return raw method scores."""
+        scores = {method.ScoreName: method.score_day(day_data)
+                  for method in methods.values()}
+        day_scores = pd.concat(scores.values(), axis=1)
+        day_scores.columns = scores.keys()
+        return day_scores
+
+    def _update_stateful_methods_on(self, day_data: pd.DataFrame, methods: Dict) -> None:
+        """Update state for all stateful methods in the provided collection."""
+        for method in methods.values():
+            if isinstance(method, StatefulQCMethod):
+                method.update_state(day_data)
+
+    def _fit_score_normalizer(self, train_data: pd.DataFrame) -> None:
+        """Fit quantile normalizer using TRAIN scores in chronological order."""
+        train_dates = train_data[main_column.DATE].drop_duplicates().sort_values().to_list()
+        if len(train_dates) == 0:
+            raise ValueError("Training data must include at least one date for score normalization.")
+
+        # Use copies to avoid mutating method state used for OOS scoring
+        methods_for_scoring = copy.deepcopy(self.qc_methods)
+        train_scores = []
+
+        for d in train_dates:
+            day_df = train_data.loc[train_data[main_column.DATE] == d].copy()
+            day_scores = self._score_day_raw(day_df, methods_for_scoring)
+            train_scores.append(day_scores)
+            self._update_stateful_methods_on(day_df, methods_for_scoring)
+
+        train_scores_df = pd.concat(train_scores, axis=0)
+        self.score_normalizer.fit(train_scores_df)
+
+    def _normalize_scores(self, scores_df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize scores using quantile ranks, skipping already-quantile columns."""
+        normalized = self.score_normalizer.transform(scores_df)
+
+        for col in self._skip_normalization_cols:
+            if col in scores_df.columns:
+                normalized[col] = scores_df[col]
+
+        return normalized

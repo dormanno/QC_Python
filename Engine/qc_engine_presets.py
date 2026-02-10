@@ -8,6 +8,7 @@ combinations of QC methods using QCMethod dataclass instances.
 from column_names import pnl_column, cds_column, cdi_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Engine.qc_engine import QCEngine
+from Engine.score_normalizer import ScoreNormalizer
 
 # ============================================================================
 # Example 1: Use ALL methods
@@ -25,7 +26,8 @@ methods_config_all = {
 engine_all_methods_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_all,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -41,7 +43,8 @@ methods_config_statistical = {
 engine_statistical_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_statistical,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -56,7 +59,8 @@ methods_config_ml = {
 engine_ml_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_ml,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -71,7 +75,8 @@ methods_config_fast = {
 engine_fast_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_fast,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -86,7 +91,8 @@ methods_config_temporal = {
 engine_temporal_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_temporal,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -99,7 +105,8 @@ methods_config_IF = {
 engine_IF_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_IF,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================
@@ -115,7 +122,8 @@ methods_config_balanced = {
 engine_balanced_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=methods_config_balanced,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 method_config_temporal_multivariate = {
@@ -130,7 +138,8 @@ method_config_temporal_multivariate = {
 engine_temporal_multivariate_pnl = QCEngine(
     qc_features=pnl_column.QC_FEATURES,
     methods_config=method_config_temporal_multivariate,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 methods_config_robust_univariate = {
@@ -143,7 +152,8 @@ methods_config_robust_univariate = {
 engine_robust_univariate_cdi = QCEngine(
     qc_features=cdi_column.QC_FEATURES,
     methods_config=methods_config_robust_univariate,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 methods_reactive_univariate = {
@@ -156,7 +166,8 @@ methods_reactive_univariate = {
 engine_reactive_univariate_cds = QCEngine(
     qc_features=cds_column.QC_FEATURES,
     methods_config=methods_reactive_univariate,
-    roll_window=20
+    roll_window=20,
+    score_normalizer=ScoreNormalizer()
 )
 
 # ============================================================================

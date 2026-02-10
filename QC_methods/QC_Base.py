@@ -10,6 +10,8 @@ class QCMethod(ABC):
                            aligned to day_df.index.
     """
 
+    RequiresNormalization: bool = True
+
     def __init__(self, score_name: str):
         self._score_name = score_name
 

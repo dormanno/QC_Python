@@ -14,6 +14,8 @@ class ECDFQC(StatefulQCMethod):
       - scores new observations by tail probability
     """
 
+    RequiresNormalization: bool = False
+
     def __init__(
         self,
         features: List[str],

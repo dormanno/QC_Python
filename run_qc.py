@@ -5,6 +5,7 @@ from column_names import pnl_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
+from Engine.score_normalizer import ScoreNormalizer
 from qc_orchestrator import QCOrchestrator
 from IO.input import PnLInput
 
@@ -46,7 +47,8 @@ def main():
     qc_engine = QCEngine(
         qc_features=qc_features,
         methods_config=methods_config,
-        roll_window=roll_window
+        roll_window=roll_window,
+        score_normalizer=ScoreNormalizer()
     )
     
     # Get input path from user
