@@ -3,10 +3,25 @@ from abc import ABC
 
 
 @dataclass(frozen=True)
+class QCFeatureFamily:
+    """A named family of QC features with a weight for family-level aggregation.
+    
+    Attributes:
+        name: Descriptive name for the feature family.
+        features: Tuple of column names in this family.
+        weight: Weight for weighted noisy-OR family aggregation.
+    """
+    name: str
+    features: tuple
+    weight: float
+
+
+@dataclass(frozen=True)
 class FeatureColumnSet(ABC):
-    """Abstract base class for columns with INPUT_FEATURES and QC_FEATURES"""
+    """Abstract base class for columns with INPUT_FEATURES, QC_FEATURES, and QC_FEATURE_FAMILIES"""
     INPUT_FEATURES: list = None
     QC_FEATURES: list = None
+    QC_FEATURE_FAMILIES: list = None
     ENGINEERED_FEATURES: list = None
 
 
@@ -35,13 +50,19 @@ class CreditDeltaSingleColumnSet(FeatureColumnSet):
     CREDIT_DELTA_SINGLE: str = "CreditDeltaSingle"
 
     def __post_init__(self):
+        families = [
+            QCFeatureFamily(name="CreditDeltaSingle",
+                            features=(self.CREDIT_DELTA_SINGLE,),
+                            weight=1.0)
+        ]
+        object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)
         object.__setattr__(self, 'QC_FEATURES', [
                 self.CREDIT_DELTA_SINGLE
             ])
         object.__setattr__(self, 'INPUT_FEATURES', [
                 self.CREDIT_DELTA_SINGLE
             ])
-        object.__setattr__(self, 'ENGINEERED_FEATURES', [])# No engineered features for CreditDeltaSingle
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])  # No engineered features for CreditDeltaSingle
 
 @dataclass(frozen=True)
 class CreditDeltaIndexColumnSet(FeatureColumnSet):
@@ -49,13 +70,19 @@ class CreditDeltaIndexColumnSet(FeatureColumnSet):
     CREDIT_DELTA_INDEX: str = "CreditDeltaIndex"
 
     def __post_init__(self):
+        families = [
+            QCFeatureFamily(name="CreditDeltaIndex",
+                            features=(self.CREDIT_DELTA_INDEX,),
+                            weight=1.0)
+        ]
+        object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)
         object.__setattr__(self, 'QC_FEATURES', [
                 self.CREDIT_DELTA_INDEX
             ])
         object.__setattr__(self, 'INPUT_FEATURES', [
                 self.CREDIT_DELTA_INDEX
             ])
-        object.__setattr__(self, 'ENGINEERED_FEATURES', [])# No engineered features for CreditDeltaIndex
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])  # No engineered features for CreditDeltaIndex
 
 @dataclass(frozen=True)
 class PnLColumnSet(FeatureColumnSet):
@@ -91,10 +118,38 @@ class PnLColumnSet(FeatureColumnSet):
         object.__setattr__(self, 'INPUT_FEATURES', [
             self.START, *self.SLICE_COLUMNS, self.END
         ])
-        object.__setattr__(self, 'QC_FEATURES', [
-            self.START, *self.SLICE_COLUMNS, self.TOTAL, 
-            self.EXPLAINED, self.UNEXPLAINED
-        ])
+        families = [
+            QCFeatureFamily(
+                name="Valuation",
+                features=(self.START, self.END),
+                weight=0.15
+            ),
+            QCFeatureFamily(
+                name="PnLSlices",
+                features=tuple(self.SLICE_COLUMNS) + (self.TOTAL,),
+                weight=0.25
+            ),
+            QCFeatureFamily(
+                name="Explanation",
+                features=(self.EXPLAINED, self.UNEXPLAINED),
+                weight=0.35
+            ),
+            QCFeatureFamily(
+                name="Jumps",
+                features=(self.TOTAL_JUMP, self.UNEXPLAINED_JUMP),
+                weight=0.25
+            ),
+        ]
+        object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)
+        # Derive flat QC_FEATURES as ordered union of all family features
+        seen = set()
+        flat_features = []
+        for fam in families:
+            for f in fam.features:
+                if f not in seen:
+                    seen.add(f)
+                    flat_features.append(f)
+        object.__setattr__(self, 'QC_FEATURES', flat_features)
         object.__setattr__(self, 'ENGINEERED_FEATURES', [
             self.TOTAL, self.EXPLAINED, self.UNEXPLAINED,
             self.TOTAL_JUMP, self.UNEXPLAINED_JUMP

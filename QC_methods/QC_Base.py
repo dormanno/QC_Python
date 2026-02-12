@@ -14,6 +14,7 @@ class QCMethod(ABC):
 
     def __init__(self, score_name: str):
         self._score_name = score_name
+        self.isFit: bool = True
 
     @property
     def ScoreName(self) -> str:
@@ -29,9 +30,19 @@ class QCMethod(ABC):
         pass
     
     def score_day(self, day_df: pd.DataFrame) -> pd.Series:
-        """Public method with validation - not overridden by subclasses."""
+        """Public method with validation - not overridden by subclasses.
+        
+        Returns NaN scores if method is not fit.
+        """
+        import numpy as np
+        
         assert len(day_df) > 0, "day_df must not be empty"
         assert day_df["Date"].nunique() == 1, "day_df must contain exactly one valuation date"
+        
+        # Return NaN if method did not fit successfully
+        if not self.isFit:
+            return pd.Series(np.nan, index=day_df.index, name=self.ScoreName)
+        
         return self._score_day_impl(day_df)
 
 

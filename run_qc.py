@@ -1,11 +1,10 @@
 """Command-line interface for running QC orchestration."""
 
 import logging
-from column_names import pnl_column
+from column_names import pnl_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Engine.feature_normalizer import FeatureNormalizer
-from Engine.qc_engine import QCEngine
-from Engine.score_normalizer import ScoreNormalizer
+from Engine.qc_engine_presets import QCEnginePreset
 from qc_orchestrator import QCOrchestrator
 from IO.input import PnLInput
 
@@ -17,15 +16,6 @@ def main():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
-    # Define QC features
-    qc_features = [
-        pnl_column.START, 
-        *pnl_column.SLICE_COLUMNS, 
-        pnl_column.TOTAL, 
-        pnl_column.EXPLAINED, 
-        pnl_column.UNEXPLAINED
-    ]
     
     # Define method configuration (QCMethod -> weight)
     # Only methods listed here will be enabled
@@ -40,16 +30,15 @@ def main():
     }
     roll_window = 20
     
-    # Create feature normalizer
-    normalizer = FeatureNormalizer(features=qc_features)
-    
-    # Create QC Engine
-    qc_engine = QCEngine(
-        qc_features=qc_features,
+    # Create QC Engine preset using feature families from column definitions
+    engine_preset = QCEnginePreset(
+        qc_feature_families=pnl_column.QC_FEATURE_FAMILIES,
         methods_config=methods_config,
-        roll_window=roll_window,
-        score_normalizer=ScoreNormalizer()
+        roll_window=roll_window
     )
+    
+    # Create feature normalizer from all features across families
+    normalizer = FeatureNormalizer(features=engine_preset.all_qc_features)
     
     # Get input path from user
     path = input("Enter full path to PnL_Input.csv: ").strip()
@@ -57,8 +46,9 @@ def main():
     try:
         orchestrator = QCOrchestrator(
             normalizer=normalizer,
-            qc_engine=qc_engine,
-            input_handler=PnLInput()
+            engine_preset=engine_preset,
+            input_handler=PnLInput(),
+            split_identifier=main_column.TRADE_TYPE
         )
         out_path = orchestrator.run(path)
         print(f"\n=== QC Processing Complete ===")

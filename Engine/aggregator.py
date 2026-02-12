@@ -51,21 +51,34 @@ class ScoreAggregator:
     def combine(self, df: pd.DataFrame) -> pd.Series:
         """Combine scores from configured methods using weighted average.
         
+        Excludes NaN scores per row by renormalizing available weights.
+        If all methods have NaN for a row, result is NaN.
+        
         Args:
             df: DataFrame containing score columns for configured methods
             
         Returns:
             Series with aggregated scores
         """
-        # Start with zeros
-        result = pd.Series(0.0, index=df.index)
+        import numpy as np
         
-        # Add weighted contribution from each configured method
-        for score_column, weight in self.weights.items():
-            if score_column in df.columns:
-                result += weight * df[score_column]
+        result = pd.Series(np.nan, index=df.index, dtype=float)
+        
+        for idx in df.index:
+            row = df.loc[idx]
+            valid_cols = [col for col in self.weights.keys() if col in row.index and pd.notna(row[col])]
+            
+            if not valid_cols:
+                # All NaN for this row
+                result.loc[idx] = np.nan
             else:
-                raise ValueError(f"Expected score column '{score_column}' not found in DataFrame")
+                # Renormalize weights for available columns
+                valid_weights = {col: self.weights[col] for col in valid_cols}
+                weight_sum = sum(valid_weights.values())
+                normalized_weights = {col: w / weight_sum for col, w in valid_weights.items()}
+                
+                agg = sum(row[col] * normalized_weights[col] for col in valid_cols)
+                result.loc[idx] = agg
         
         return result.rename(qc_column.AGGREGATED_SCORE)
 

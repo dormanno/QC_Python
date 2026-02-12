@@ -3,6 +3,7 @@
 import copy
 import logging
 from typing import List, Dict, Optional
+import numpy as np
 import pandas as pd
 
 from column_names import main_column, qc_column
@@ -194,7 +195,7 @@ class QCEngine:
         # Normalize scores (skip ECDF)
         day_scores = self._normalize_scores(day_scores_raw)
 
-        # Aggregate normalized scores
+        # Aggregate normalized scores (handles NaNs per row)
         aggregated_score = self.aggregator.combine(day_scores)
         qc_flag = self.aggregator.map_to_flag(aggregated_score).to_frame()
         
@@ -214,8 +215,9 @@ class QCEngine:
 
     def _score_day_raw(self, day_data: pd.DataFrame, methods: Dict) -> pd.DataFrame:
         """Score a single day and return raw method scores."""
-        scores = {method.ScoreName: method.score_day(day_data)
-                  for method in methods.values()}
+        scores = {}
+        for method in methods.values():
+            scores[method.ScoreName] = method.score_day(day_data)
         day_scores = pd.concat(scores.values(), axis=1)
         day_scores.columns = scores.keys()
         return day_scores

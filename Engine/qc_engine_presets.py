@@ -1,130 +1,86 @@
 """
-Example configurations for QCEngine with different method combinations.
+Preset configurations for QCEngine with different method combinations.
 
-This module demonstrates how to instantiate QCEngine with various
-combinations of QC methods using QCMethod dataclass instances.
+This module defines QCEnginePreset instances that hold all parameters needed
+to instantiate QCEngine objects. Engines are built on-demand via build_engine().
 """
 
-from column_names import pnl_column, cds_column, cdi_column
-from QC_methods.qc_method_definitions import QCMethodDefinitions
+from dataclasses import dataclass
+from typing import List, Dict
+
+from column_names import pnl_column, cds_column, cdi_column, qc_column, QCFeatureFamily
+from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
 from Engine.qc_engine import QCEngine
 from Engine.score_normalizer import ScoreNormalizer
 
-# ============================================================================
-# Example 1: Use ALL methods
-# ============================================================================
-methods_config_all = {
-    QCMethodDefinitions.ISOLATION_FOREST: 0.2,
-    QCMethodDefinitions.ROBUST_Z: 0.1,
-    QCMethodDefinitions.ROLLING: 0.1,
-    QCMethodDefinitions.IQR: 0.1,
-    QCMethodDefinitions.LOF: 0.2,
-    QCMethodDefinitions.ECDF: 0.2,
-    QCMethodDefinitions.HAMPEL: 0.1
-}
 
-engine_all_methods_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_all,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+@dataclass
+class QCEnginePreset:
+    """Preset holding all parameters needed to build QCEngine instances per feature family.
 
-# ============================================================================
-# Example 2: Use only STATISTICAL methods (no ML-based methods)
-# ============================================================================
-methods_config_statistical = {
-    QCMethodDefinitions.ROBUST_Z: 0.25,
-    QCMethodDefinitions.ROLLING: 0.25,
-    QCMethodDefinitions.IQR: 0.25,
-    QCMethodDefinitions.HAMPEL: 0.25
-}
+    Engines are not instantiated at module load time. Instead, call build_engine(family)
+    to create a fresh QCEngine instance for a specific feature family on demand.
 
-engine_statistical_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_statistical,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+    Attributes:
+        qc_feature_families: List of QCFeatureFamily instances defining feature groups.
+        methods_config: Dictionary mapping QCMethodDefinition instances to weights.
+        roll_window: Window size for rolling methods.
+    """
+    qc_feature_families: List[QCFeatureFamily]
+    methods_config: Dict[QCMethodDefinition, float]
+    roll_window: int = 20
 
-# ============================================================================
-# Example 3: Use only ML-BASED methods
-# ============================================================================
-methods_config_ml = {
-    QCMethodDefinitions.ISOLATION_FOREST: 0.34,
-    QCMethodDefinitions.LOF: 0.33,
-    QCMethodDefinitions.ECDF: 0.33
-}
+    def __post_init__(self):
+        """Validate that feature family weights sum to 1."""
+        weight_sum = sum(f.weight for f in self.qc_feature_families)
+        if abs(weight_sum - 1.0) > 1e-9:
+            raise ValueError(
+                f"Feature family weights must sum to 1.0. "
+                f"Current sum: {weight_sum} from families: "
+                f"{[(f.name, f.weight) for f in self.qc_feature_families]}"
+            )
 
-engine_ml_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_ml,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+    def build_engine(self, family: QCFeatureFamily) -> QCEngine:
+        """Instantiate a fresh QCEngine for a specific feature family.
 
-# ============================================================================
-# Example 4: Use FAST methods only (minimal computation)
-# ============================================================================
-methods_config_fast = {
-    QCMethodDefinitions.ROBUST_Z: 0.4,
-    QCMethodDefinitions.IQR: 0.3,
-    QCMethodDefinitions.ECDF: 0.3
-}
+        Args:
+            family: The feature family whose features will be used by the engine.
 
-engine_fast_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_fast,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+        Returns:
+            QCEngine: New engine instance with the family's features and a fresh ScoreNormalizer.
+        """
+        return QCEngine(
+            qc_features=list(family.features),
+            methods_config=self.methods_config,
+            roll_window=self.roll_window,
+            score_normalizer=ScoreNormalizer()
+        )
 
-# ============================================================================
-# Example 5: Use TEMPORAL methods (consider historical data)
-# ============================================================================
-methods_config_temporal = {
-    QCMethodDefinitions.ISOLATION_FOREST: 0.3,
-    QCMethodDefinitions.ROLLING: 0.35,
-    QCMethodDefinitions.HAMPEL: 0.35
-}
+    @property
+    def all_qc_features(self) -> List[str]:
+        """Flat ordered union of all feature family features.
 
-engine_temporal_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_temporal,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+        Returns:
+            List[str]: All unique feature column names across all families.
+        """
+        seen = set()
+        result = []
+        for fam in self.qc_feature_families:
+            for f in fam.features:
+                if f not in seen:
+                    seen.add(f)
+                    result.append(f)
+        return result
 
-# ============================================================================
-# Example 6: Single method for testing/debugging
-# ============================================================================
-methods_config_IF = {
-    QCMethodDefinitions.ISOLATION_FOREST: 1.0
-}
+    def get_score_columns(self) -> List[str]:
+        """Get list of all score columns that engines built from this preset will generate.
 
-engine_IF_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_IF,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
-
-# ============================================================================
-# Example 7: Custom balanced configuration
-# ============================================================================
-methods_config_balanced = {
-    QCMethodDefinitions.ISOLATION_FOREST: 0.3,
-    QCMethodDefinitions.ROBUST_Z: 0.2,
-    QCMethodDefinitions.ECDF: 0.25,
-    QCMethodDefinitions.ROLLING: 0.25
-}
-
-engine_balanced_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
-    methods_config=methods_config_balanced,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
-)
+        Returns:
+            List[str]: Score column names including individual method scores,
+                      aggregated score, and QC flag.
+        """
+        method_score_cols = [method_def.score_name for method_def in self.methods_config.keys()]
+        return method_score_cols + [qc_column.AGGREGATED_SCORE, qc_column.QC_FLAG]
 
 method_config_temporal_multivariate = {
     QCMethodDefinitions.ISOLATION_FOREST: 0.25,
@@ -135,11 +91,10 @@ method_config_temporal_multivariate = {
     QCMethodDefinitions.ECDF: 0.15
 }
 
-engine_temporal_multivariate_pnl = QCEngine(
-    qc_features=pnl_column.QC_FEATURES,
+preset_temporal_multivariate_pnl = QCEnginePreset(
+    qc_feature_families=pnl_column.QC_FEATURE_FAMILIES,
     methods_config=method_config_temporal_multivariate,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
+    roll_window=20
 )
 
 methods_config_robust_univariate = {
@@ -149,11 +104,10 @@ methods_config_robust_univariate = {
     QCMethodDefinitions.HAMPEL: 0.20
 }
 
-engine_robust_univariate_cdi = QCEngine(
-    qc_features=cdi_column.QC_FEATURES,
+preset_robust_univariate_cdi = QCEnginePreset(
+    qc_feature_families=cdi_column.QC_FEATURE_FAMILIES,
     methods_config=methods_config_robust_univariate,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
+    roll_window=20
 )
 
 methods_reactive_univariate = {
@@ -163,11 +117,10 @@ methods_reactive_univariate = {
     QCMethodDefinitions.ROLLING: 0.20
 }
 
-engine_reactive_univariate_cds = QCEngine(
-    qc_features=cds_column.QC_FEATURES,
+preset_reactive_univariate_cds = QCEnginePreset(
+    qc_feature_families=cds_column.QC_FEATURE_FAMILIES,
     methods_config=methods_reactive_univariate,
-    roll_window=20,
-    score_normalizer=ScoreNormalizer()
+    roll_window=20
 )
 
 # ============================================================================
