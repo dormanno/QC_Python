@@ -7,6 +7,7 @@ from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine_presets import QCEnginePreset
 from qc_orchestrator import QCOrchestrator
 from IO.input import PnLInput
+from IO.output import Output
 
 
 def main():
@@ -44,13 +45,29 @@ def main():
     path = input("Enter full path to PnL_Input.csv: ").strip()
     
     try:
+        # Create input handler and read/validate data
+        input_handler = PnLInput()
+        full_data_set = input_handler.read_and_validate(path, split_identifier=main_column.TRADE_TYPE)
+        
+        # Run orchestration with preprocessed data
         orchestrator = QCOrchestrator(
             normalizer=normalizer,
             engine_preset=engine_preset,
-            input_handler=PnLInput(),
             split_identifier=main_column.TRADE_TYPE
         )
-        out_path = orchestrator.run(path)
+        oos_scores = orchestrator.run(full_data_set)
+        
+        # Export results to file
+        output_handler = Output()
+        score_columns = engine_preset.get_score_columns()
+        out_path = output_handler.export_full_dataset(
+            full_data_set=full_data_set,
+            oos_scores=oos_scores,
+            input_path=path,
+            score_cols=score_columns,
+            suffix="_with_scores"
+        )
+        
         print(f"\n=== QC Processing Complete ===")
         print(f"Output file: {out_path}")
     except Exception as e:

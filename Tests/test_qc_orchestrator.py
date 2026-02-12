@@ -7,6 +7,7 @@ from Engine import qc_engine_presets
 from qc_orchestrator import QCOrchestrator
 from Engine.feature_normalizer import FeatureNormalizer
 from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
+from IO.output import Output
 from column_names import pnl_column, cds_column, cdi_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 
@@ -54,13 +55,26 @@ class TestQCOrchestrator(unittest.TestCase):
 
             # Run the orchestrator
             try:
+                # Read and validate data
+                full_data_set = input_handler.read_and_validate(temp_input_path, split_identifier=main_column.TRADE_TYPE)
+                
                 orchestrator = QCOrchestrator(
                     normalizer=normalizer,
                     engine_preset=engine_preset,
-                    input_handler=input_handler,
                     split_identifier=main_column.TRADE_TYPE
                 )
-                output_path = orchestrator.run(temp_input_path)
+                oos_scores = orchestrator.run(full_data_set)
+                
+                # Export results to file
+                output_handler = Output()
+                score_columns = engine_preset.get_score_columns()
+                output_path = output_handler.export_full_dataset(
+                    full_data_set=full_data_set,
+                    oos_scores=oos_scores,
+                    input_path=temp_input_path,
+                    score_cols=score_columns,
+                    suffix="_with_scores"
+                )
                 # 1. Run succeeded (no exception)
                 self.assertIsInstance(output_path, str)
             except Exception as e:

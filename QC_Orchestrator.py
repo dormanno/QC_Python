@@ -2,8 +2,6 @@ import logging
 import pandas as pd
 from typing import List, Tuple, Optional, Dict
 
-from IO.input import Input
-from IO.output import Output
 from column_names import main_column, qc_column
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
@@ -24,24 +22,20 @@ class QCOrchestrator:
     def __init__(self, 
                  normalizer: FeatureNormalizer,
                  engine_preset: QCEnginePreset,
-                 input_handler: Input,
                  split_identifier: Optional[str] = None):
-        """Initialize the orchestrator with normalizer, engine preset, and input handler.
+        """Initialize the orchestrator with normalizer and engine preset.
         
         Args:
             normalizer (FeatureNormalizer): Configured feature normalizer.
             engine_preset (QCEnginePreset): Preset defining QC engine configuration.
                 Engines are instantiated on demand from this preset.
-            input_handler (Input): Input handler for reading and processing data.
             split_identifier (Optional[str]): Column name to split data by before
                 training/scoring. If provided, separate QC engines are built and
                 fitted per unique value in this column (e.g. TradeType).
         """
         self.normalizer = normalizer
         self.engine_preset = engine_preset
-        self.input_handler = input_handler
         self.split_identifier = split_identifier
-        self.output_handler = Output()
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
         """Split data into train/test sets based on date cutoff.
@@ -224,7 +218,7 @@ class QCOrchestrator:
             qc_flag.reset_index(drop=True),
         ], axis=1)
 
-    def run(self, input_path: str) -> str:
+    def run(self, full_data_set: pd.DataFrame) -> pd.DataFrame:
         """Run the complete QC orchestration pipeline.
         
         Performs walk-forward evaluation: trains on first 2/3 of dates,
@@ -232,35 +226,20 @@ class QCOrchestrator:
         separate engines are trained and applied per group.
         
         Args:
-            input_path (str): Path to input CSV file.
+            full_data_set (pd.DataFrame): DataFrame with preprocessed, sorted, and
+                validated data. Typically obtained from Input.read_and_validate().
         
         Returns:
-            str: Path to output file with QC scores.
+            pd.DataFrame: Out-of-sample QC scores with columns:
+                - TRADE, DATE, method scores, AGGREGATED_SCORE, QC_FLAG
         
         Raises:
-            ValueError: If insufficient data for train/OOS split, or if
-                split_identifier column is missing or has null values.
+            ValueError: If insufficient data for train/OOS split.
         """
-        logger.info(f"Starting QC orchestration for: {input_path}")
+        logger.info(f"Starting QC orchestration for {len(full_data_set)} rows")
         
-        # 1) Read and sort data
-        full_data_set = self.input_handler.read_input(input_path)
-        full_data_set = full_data_set.sort_values(main_column.DATE)
+        # Data is already read, sorted, and validated by caller
         logger.info(f"Loaded {len(full_data_set)} rows with {full_data_set[main_column.DATE].nunique()} unique dates")
-
-        # Validate split_identifier column if defined
-        if self.split_identifier is not None:
-            if self.split_identifier not in full_data_set.columns:
-                raise ValueError(
-                    f"split_identifier column '{self.split_identifier}' not found in dataset. "
-                    f"Available columns: {list(full_data_set.columns)}"
-                )
-            missing_count = full_data_set[self.split_identifier].isna().sum()
-            if missing_count > 0:
-                raise ValueError(
-                    f"split_identifier column '{self.split_identifier}' has {missing_count} "
-                    f"missing values. Every row must have a value."
-                )
 
         # 2) Split train / OOS by RecordType (if present) or by date
         if main_column.RECORD_TYPE in full_data_set.columns:
@@ -273,9 +252,6 @@ class QCOrchestrator:
 
         # 4) Build and fit QC engine(s) — one per split group, or one global engine
         engines = self._build_and_fit_engines(train_data)
-        
-        # Score columns are identical for all engines built from the same preset
-        score_columns = self.engine_preset.get_score_columns()
 
         # 5) Iterate OOS day-by-day
         results = []
@@ -313,17 +289,7 @@ class QCOrchestrator:
 
         oos_scores = pd.concat(results, ignore_index=True)
         logger.info(f"Generated scores for {len(oos_scores)} OOS rows")
-
-        # 6) Export full dataset with scores
-        out_path = self.output_handler.export_full_dataset(
-            full_data_set=full_data_set,
-            oos_scores=oos_scores,
-            input_path=input_path,
-            score_cols=score_columns,
-            suffix="_with_scores"
-        )        
-        logger.info(f"Output written to: {out_path}")
-        return out_path
+        return oos_scores
 
 
 

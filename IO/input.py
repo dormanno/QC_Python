@@ -1,7 +1,10 @@
 from typing import Optional
+import logging
 
 import pandas as pd
 from column_names import main_column, pnl_column, cds_column, cdi_column
+
+logger = logging.getLogger(__name__)
 
 
 class Input:
@@ -80,6 +83,45 @@ class Input:
         
         # Sort and reset
         df = df.sort_values([main_column.DATE, main_column.TRADE]).reset_index(drop=True)
+        return df
+
+    def read_and_validate(self, path: str, split_identifier: Optional[str] = None) -> pd.DataFrame:
+        """Read, sort by date, and validate input data.
+        
+        Performs read_input, sorts by DATE, and optionally validates split_identifier column.
+        
+        Args:
+            path (str): Path to input CSV file.
+            split_identifier (Optional[str]): Column name to validate as split identifier.
+                If provided, validates that the column exists and has no missing values.
+        
+        Returns:
+            pd.DataFrame: Processed, sorted, and validated DataFrame.
+        
+        Raises:
+            ValueError: If data validation fails.
+        """
+        # Read and process input
+        df = self.read_input(path)
+        
+        # Ensure sorted by date
+        df = df.sort_values(main_column.DATE).reset_index(drop=True)
+        logger.info(f"Loaded {len(df)} rows with {df[main_column.DATE].nunique()} unique dates")
+        
+        # Validate split_identifier column if defined
+        if split_identifier is not None:
+            if split_identifier not in df.columns:
+                raise ValueError(
+                    f"split_identifier column '{split_identifier}' not found in dataset. "
+                    f"Available columns: {list(df.columns)}"
+                )
+            missing_count = df[split_identifier].isna().sum()
+            if missing_count > 0:
+                raise ValueError(
+                    f"split_identifier column '{split_identifier}' has {missing_count} "
+                    f"missing values. Every row must have a value."
+                )
+        
         return df
 
     def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
