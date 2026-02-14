@@ -1,0 +1,11 @@
+scenario Name,scope: what features must be altered,"scale: how many trades, days must be affected",formula: how to amend original value,real-world explanation: what issues we emulate
+PV_EoD_Spike_Point,End_PV,"1-3% of trades, 1 day each",End_PV' = End_PV + s*k*MAD_seg(End_PV),"One-off bad market data snapshot, one trade mispriced, transient calc glitch"
+PV_EoD_StepChange,End_PV,"0.5-2% of trades, 10+ days from t?",For t?t?: End_PV' = End_PV + s*k*MAD_seg(End_PV),Persistent mapping/config/model change affecting a subset of trades
+PV_EoD_StaleCopy,End_PV,"1-2% of trades, 5-15 days",End_PV(t)' = End_PV(t-1),Stuck feed / valuations not updating but still being published
+PV_EoD_ScaleError_x100,End_PV,"0.5-1% of trades, 1 day (and optionally persistent variant)",End_PV' = End_PV * 100 (or /100),"Unit/currency/notional scaling error, decimal placement bug"
+PV_EoD_SignFlip,End_PV,"0.5-1% of trades, 1 day (or persistent)",End_PV' = -End_PV,"Sign convention inversion (payer/receiver), wrong direction, mapping inversion"
+Slice_CreditSingle_Spike_Point,Credit_Single_PnL,"1-3% of trades, 1 day",Credit_Single_PnL' = Credit_Single_PnL + s*k*MAD_seg(Credit_Single_PnL),"Component PnL spike due to factor mispricing, wrong bucket, calc bug"
+Slice_CreditSingle_StaleCopy,Credit_Single_PnL,"1-2% of trades, 5-15 days",Credit_Single_PnL(t)' = Credit_Single_PnL(t-1),One pricer module stuck while others update normally
+Slice_Reallocation_Bug,"Credit_Single_PnL and one 'donor' slice (e.g., Rates_PnL or Model_PnL)","1-2% of trades, 1 day",? = s*k*MAD_seg(Credit_Single_PnL); Credit_Single_PnL' = Credit_Single_PnL + ?; DonorSlice' = DonorSlice - ?,Misallocation between components - totals look fine but slice mix is wrong
+TotalPnL_IdentityBreak,"Credit_Single_PnL (or End_PV) without updating Total_PnL (and/or Explained, Residual)","0.5-1% of trades, 1 day",Change a component: Credit_Single_PnL' = Credit_Single_PnL + ? but keep Total_PnL unchanged,"Broken reconciliation/aggregation, stale totals, downstream join failure"
+CrossFamily_Inconsistency_PVvsPnL,End_PV and keep Total_PnL near baseline (or vice versa),"0.5-1% of trades, 1 day",End_PV' = End_PV + s*k*MAD_seg(End_PV); Total_PnL' = Total_PnL + ? (small noise),PV feed/date alignment issue: PV changes but PnL pipeline doesn't match (or the reverse)

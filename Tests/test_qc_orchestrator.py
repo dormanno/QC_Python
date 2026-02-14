@@ -10,6 +10,7 @@ from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from IO.output import Output
 from column_names import pnl_column, cds_column, cdi_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
+from Tests.outlier_injector import OutlierInjector
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -29,7 +30,7 @@ ROLL_WINDOW = 20
 
 class TestQCOrchestrator(unittest.TestCase):
     
-    def _run_qc_test(self, original_input_file, input_handler, columnSet, engine_preset):
+    def _run_qc_test(self, original_input_file, input_handler, columnSet, engine_preset, injector=None, inject=False):
         """Helper method to run QC test with specified column configuration and input file.
         
         Args:            
@@ -37,6 +38,7 @@ class TestQCOrchestrator(unittest.TestCase):
             input_handler: Input handler instance
             columnSet: Column set instance
             engine_preset: QCEnginePreset instance
+            injector: Optional OutlierInjector instance to manipulate data before QC
         """          
         
         # Create a temporary directory for the test
@@ -57,6 +59,12 @@ class TestQCOrchestrator(unittest.TestCase):
             try:
                 # Read and validate data
                 full_data_set = input_handler.read_and_validate(temp_input_path, split_identifier=main_column.TRADE_TYPE)
+                # Inject outliers if requested
+                if inject:
+                    if injector is None:
+                        injector = OutlierInjector()
+                    full_data_set = injector.inject(full_data_set)
+                
                 
                 orchestrator = QCOrchestrator(
                     normalizer=normalizer,
@@ -102,11 +110,20 @@ class TestQCOrchestrator(unittest.TestCase):
     def test_QC_PnL(self):
         """Test QC for PnL data."""
         self._run_qc_test(
-            # "PnL_Input2.csv", 
-            "PnL_Input_Injected.csv",
+            "PnL_Input_Train-OOS.csv", 
+            #"PnL_Input_Injected.csv",
             PnLInput(), 
             pnl_column, 
             qc_engine_presets.preset_temporal_multivariate_pnl)
+
+    def test_QC_PnL_with_injections(self):
+        """Test QC for PnL data with outlier injections."""
+        self._run_qc_test(
+            "PnL_Input_Train-OOS.csv",
+            PnLInput(),
+            pnl_column,
+            qc_engine_presets.preset_temporal_multivariate_pnl,
+            inject=True)
     
     def test_QC_CreditDeltaSingle(self):
         """Test QC for Credit Delta Single data."""        
@@ -123,5 +140,6 @@ class TestQCOrchestrator(unittest.TestCase):
             CreditDeltaIndexInput(), 
             cdi_column, 
             qc_engine_presets.preset_robust_univariate_cdi)
+
 if __name__ == '__main__':
     unittest.main()
