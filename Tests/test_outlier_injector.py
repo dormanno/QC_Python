@@ -3,14 +3,14 @@ import os
 import tempfile
 import shutil
 import pandas as pd
-from IO.input import PnLInput
-from column_names import main_column
-from Tests.outlier_injector import OutlierInjector
+from IO.input import PnLInput, CreditDeltaSingleInput
+from column_names import main_column, cds_column
+from Tests.outlier_injectors import PnLOutlierInjector, CdsOutlierInjector
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
 
-class TestOutlierInjector(unittest.TestCase):
+class TestPnLOutlierInjector(unittest.TestCase):
 
     def test_outlier_injections(self):
         """Validate that outlier injections are applied correctly to OOS data."""
@@ -26,7 +26,7 @@ class TestOutlierInjector(unittest.TestCase):
                 split_identifier=main_column.TRADE_TYPE
             )
 
-            injector = OutlierInjector()
+            injector = PnLOutlierInjector()
             injected_df = injector.inject(original_df)
 
             # 1) Shape should be identical
@@ -110,7 +110,7 @@ class TestOutlierInjector(unittest.TestCase):
                 split_identifier=main_column.TRADE_TYPE
             )
 
-            injector = OutlierInjector()
+            injector = PnLOutlierInjector()
             injected_df = injector.inject(original_df)
 
             # Build enriched dataset: updated RecordType + original values + *_injected columns
@@ -141,6 +141,181 @@ class TestOutlierInjector(unittest.TestCase):
             # Ensure at least one injected value is present
             any_injected = enriched_df[injected_columns].notna().any(axis=None)
             self.assertTrue(any_injected, "No injected values found in *_injected columns")
+
+            # Export for review
+            output_name = os.path.splitext(original_input_file)[0] + "_injected.csv"
+            output_path = os.path.join(temp_dir, output_name)
+            enriched_df.to_csv(output_path, index=False)
+            self.assertTrue(os.path.exists(output_path), f"Output file not created: {output_path}")
+
+            # Copy output to original directory for review
+            shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, output_name))
+
+
+class TestCdsOutlierInjector(unittest.TestCase):
+
+    def test_cds_injections_applied(self):
+        """Validate that CDS injections are applied correctly to OOS data."""
+        original_input_file = "CreditDeltaSingle_Input.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaSingleInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            injector = CdsOutlierInjector()
+            injected_df = injector.inject(original_df)
+
+            # 1) Shape should be identical (or have RecordType added if not in original)
+            if main_column.RECORD_TYPE not in original_df.columns:
+                # Injector adds RecordType if missing
+                self.assertEqual(
+                    original_df.shape[0],
+                    injected_df.shape[0],
+                    "Row count differs"
+                )
+                self.assertEqual(
+                    original_df.shape[1] + 1,  # +1 for RecordType column added by injector
+                    injected_df.shape[1],
+                    "Column count should match (or differ by 1 if RecordType was added)"
+                )
+            else:
+                self.assertEqual(
+                    original_df.shape,
+                    injected_df.shape,
+                    "Injected dataset shape differs from original"
+                )
+
+            # 2) Original should contain only Train and OOS labels
+            if main_column.RECORD_TYPE in original_df.columns:
+                allowed_labels = {"Train", "OOS"}
+                original_labels = set(original_df[main_column.RECORD_TYPE].astype(str).unique())
+                self.assertTrue(
+                    original_labels.issubset(allowed_labels),
+                    f"Original dataset has unexpected RecordType labels: {sorted(original_labels - allowed_labels)}"
+                )
+
+            # 3) All CDS injection scenarios should be present
+            expected_scenarios = {
+                "CD_Drift",
+                "CD_StaleValue",
+                "CD_ClusterShock_3d",
+                "CD_TradeTypeWide_Shock",
+                "CD_PointShock",
+                "CD_SignFlip",
+                "CD_ScaleError",
+                "CD_SuddenZero",
+            }
+
+            injected_labels = set(
+                injected_df[main_column.RECORD_TYPE]
+                .astype(str)
+                .unique()
+            )
+
+            missing = expected_scenarios - injected_labels
+            self.assertFalse(
+                missing,
+                f"Missing CDS injection scenarios: {sorted(missing)}"
+            )
+
+            # 4) No Train rows should be changed
+            if main_column.RECORD_TYPE in original_df.columns:
+                train_mask = original_df[main_column.RECORD_TYPE] == "Train"
+                if train_mask.any():
+                    pd.testing.assert_frame_equal(
+                        original_df.loc[train_mask].reset_index(drop=True),
+                        injected_df.loc[train_mask].reset_index(drop=True),
+                        check_dtype=False
+                    )
+
+            # 5) All injected rows must be OOS (or newly added if RecordType didn't exist)
+            injected_mask = injected_df[main_column.RECORD_TYPE].astype(str).isin(expected_scenarios)
+            self.assertTrue(
+                injected_mask.any(),
+                "No injected rows found in dataset"
+            )
+            
+            # Verify that modified rows were originally OOS (if RecordType existed in original)
+            if main_column.RECORD_TYPE in original_df.columns:
+                original_injected_record_types = original_df.loc[injected_mask, main_column.RECORD_TYPE].unique()
+                self.assertTrue(
+                    all(rt in {"OOS", "Train"} for rt in original_injected_record_types),
+                    f"Some injected rows were not from OOS: {original_injected_record_types}"
+                )
+
+    def test_cds_injections_by_trade_type(self):
+        """Validate that CDS injections respect per-trade-type configuration."""
+        original_input_file = "CreditDeltaSingle_Input.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaSingleInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            injector = CdsOutlierInjector()
+            injected_df = injector.inject(original_df)
+
+            # Count injections per scenario and trade type
+            for scenario in ["CD_Drift", "CD_StaleValue", "CD_ClusterShock_3d"]:
+                scenario_mask = injected_df[main_column.RECORD_TYPE] == scenario
+                if scenario_mask.any():
+                    trade_types = injected_df.loc[scenario_mask, main_column.TRADE_TYPE].unique()
+                    # Should only have trade types from the original dataset
+                    original_trade_types = original_df[main_column.TRADE_TYPE].unique()
+                    self.assertTrue(
+                        all(tt in original_trade_types for tt in trade_types),
+                        f"Unknown trade types in {scenario}: {trade_types}"
+                    )
+
+    def test_cds_injections_export_enriched(self):
+        """Export enriched file with original and injected CDS values for review."""
+        original_input_file = "CreditDeltaSingle_Input.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaSingleInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            injector = CdsOutlierInjector()
+            injected_df = injector.inject(original_df)
+
+            # Build enriched dataset
+            enriched_df = original_df.copy()
+            if main_column.RECORD_TYPE in injected_df.columns:
+                enriched_df[main_column.RECORD_TYPE] = injected_df[main_column.RECORD_TYPE]
+
+            # Add injected value column for CDS
+            injected_cds_col = f"{cds_column.CREDIT_DELTA_SINGLE}_injected"
+            changed_mask = injected_df[cds_column.CREDIT_DELTA_SINGLE] != original_df[cds_column.CREDIT_DELTA_SINGLE]
+            enriched_df[injected_cds_col] = injected_df[cds_column.CREDIT_DELTA_SINGLE].where(changed_mask, pd.NA)
+
+            # Basic validations
+            self.assertEqual(
+                enriched_df.shape[0],
+                original_df.shape[0],
+                "Enriched dataset row count differs from original"
+            )
+            self.assertIn(injected_cds_col, enriched_df.columns, "Missing injected CDS column")
+
+            # Ensure at least one injected value is present
+            any_injected = enriched_df[injected_cds_col].notna().any()
+            self.assertTrue(any_injected, "No injected CDS values found")
 
             # Export for review
             output_name = os.path.splitext(original_input_file)[0] + "_injected.csv"

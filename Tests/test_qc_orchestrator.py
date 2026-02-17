@@ -10,7 +10,7 @@ from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from IO.output import Output
 from column_names import pnl_column, cds_column, cdi_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
-from Tests.outlier_injector import OutlierInjector
+from Tests.outlier_injectors import PnLOutlierInjector, CdsOutlierInjector
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -38,7 +38,7 @@ class TestQCOrchestrator(unittest.TestCase):
             input_handler: Input handler instance
             columnSet: Column set instance
             engine_preset: QCEnginePreset instance
-            injector: Optional OutlierInjector instance to manipulate data before QC
+            injector: Optional OutlierInjector subclass instance to manipulate data before QC
         """          
         
         # Create a temporary directory for the test
@@ -62,7 +62,7 @@ class TestQCOrchestrator(unittest.TestCase):
                 # Inject outliers if requested
                 if inject:
                     if injector is None:
-                        injector = OutlierInjector()
+                        raise ValueError("inject=True but no injector provided")
                     full_data_set = injector.inject(full_data_set)
                 
                 
@@ -123,6 +123,7 @@ class TestQCOrchestrator(unittest.TestCase):
             PnLInput(),
             pnl_column,
             qc_engine_presets.preset_temporal_multivariate_pnl,
+            injector=PnLOutlierInjector(),
             inject=True)
     
     def test_QC_CreditDeltaSingle(self):
@@ -133,6 +134,16 @@ class TestQCOrchestrator(unittest.TestCase):
             cds_column, 
             qc_engine_presets.preset_reactive_univariate_cds)
 
+    def test_QC_CreditDeltaSingle_with_injections(self):
+        """Test QC for Credit Delta Single data with outlier injections."""
+        self._run_qc_test(
+            "CreditDeltaSingle_Input.csv",
+            CreditDeltaSingleInput(),
+            cds_column,
+            qc_engine_presets.preset_reactive_univariate_cds,
+            injector=CdsOutlierInjector(),
+            inject=True)
+
     def test_QC_CreditDeltaIndex(self):
         """Test QC for Credit Delta Index data."""        
         self._run_qc_test(
@@ -140,6 +151,15 @@ class TestQCOrchestrator(unittest.TestCase):
             CreditDeltaIndexInput(), 
             cdi_column, 
             qc_engine_presets.preset_robust_univariate_cdi)
+
+    def test_QC_CreditDeltaIndex_with_injections(self):
+        """Test QC for Credit Delta Index data with outlier injections."""
+        self._run_qc_test(
+            "CreditDeltaIndex_Input.csv",
+            CreditDeltaIndexInput(),
+            cdi_column,
+            qc_engine_presets.preset_robust_univariate_cdi,
+            inject=True)
 
 if __name__ == '__main__':
     unittest.main()
