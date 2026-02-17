@@ -12,7 +12,7 @@ ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
 class TestPnLOutlierInjector(unittest.TestCase):
 
-    def test_outlier_injections(self):
+    def test_outlier_injections_pnl(self):
         """Validate that outlier injections are applied correctly to OOS data."""
         original_input_file = "PnL_Input_Train-OOS.csv"
 
@@ -96,7 +96,7 @@ class TestPnLOutlierInjector(unittest.TestCase):
                 "Some Train rows were injected"
             )
 
-    def test_outlier_injections_export_enriched(self):
+    def test_outlier_injections_pnl_export_enriched(self):
         """Export enriched file with original values and *_injected columns for review."""
         original_input_file = "PnL_Input_Train-OOS.csv"
 

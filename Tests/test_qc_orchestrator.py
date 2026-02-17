@@ -105,7 +105,10 @@ class TestQCOrchestrator(unittest.TestCase):
             self.assertEqual(len(output_df.columns), expected_cols, f"Output columns {len(output_df.columns)} != expected {expected_cols}")
 
             # Copy output back to original directory for review
-            shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, os.path.basename(output_path)))
+            try:
+                shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, os.path.basename(output_path)))
+            except PermissionError:
+                print(f"Warning: Could not copy output to {ORIGINAL_INPUT_DIRECTORY}. Permission denied.")
 
     def test_QC_PnL(self):
         """Test QC for PnL data."""
