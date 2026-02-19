@@ -1,23 +1,25 @@
 """
-CDS (Credit Delta Single) outlier injector implementing 8 data quality scenarios.
+Credit Delta outlier injector implementing 8 data quality scenarios.
 
-Implements 8 specific data quality issue scenarios for Credit Delta Single (CDS)
-datasets as specified in CDS_InjectionScenarios.md.
+Implements 8 data quality issue scenarios for Credit Delta datasets as specified
+in CDS_InjectionScenarios.md. Supports different dataset types (CDS, CDI, etc.)
+through configurable parameters passed at instantiation.
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple
-from column_names import cds_column, main_column
+from column_names import main_column
 from .base import OutlierInjector
+from .credit_delta_config import CreditDeltaInjectorConfig
 
 
-class CdsOutlierInjector(OutlierInjector):
+class CreditDeltaOutlierInjector(OutlierInjector):
     """
-    CDS (Credit Delta Single) outlier injector implementing 8 data quality scenarios.
+    Credit Delta outlier injector implementing 8 data quality scenarios.
     
-    Implements 8 specific data quality issue scenarios for Credit Delta Single (CDS)
-    datasets as specified in CDS_InjectionScenarios.md.
+    Generic injector supporting multiple Credit Delta dataset types through
+    configurable parameters. Implement 8 scenario types as specified in
+    CDS_InjectionScenarios.md, adaptable to different datasets.
     """
     
     # Re-export severity constants for convenience in default parameters
@@ -26,14 +28,26 @@ class CdsOutlierInjector(OutlierInjector):
     SEVERITY_HIGH = OutlierInjector.SEVERITY_HIGH
     SEVERITY_EXTREME = OutlierInjector.SEVERITY_EXTREME
     
-    def inject(self, dataset: pd.DataFrame) -> pd.DataFrame:
+    def __init__(self, config: CreditDeltaInjectorConfig, random_seed: int = 42):
         """
-        Inject CDS outliers into the dataset.
-        
-        Applies all 8 CDS scenarios sequentially, each respecting eligible OOS rows.
+        Initialize the Credit Delta injector with configuration.
         
         Args:
-            dataset: The CDS dataset to inject outliers into
+            config: Configuration object containing all numerical parameters
+            random_seed: Random seed for reproducibility
+        """
+        super().__init__(random_seed=random_seed)
+        self.config = config
+        self.feature_column = config.feature_column
+    
+    def inject(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject outliers into the dataset.
+        
+        Applies all 8 scenarios sequentially, each respecting eligible OOS rows.
+        
+        Args:
+            dataset: The dataset to inject outliers into
             
         Returns:
             The modified dataset with outliers injected
@@ -52,76 +66,6 @@ class CdsOutlierInjector(OutlierInjector):
         df = self.inject_cd_sudden_zero(df)
 
         return df
-    
-    def _get_trade_type_days(self) -> Dict[str, int]:
-        """Get T (number of days) for each trade type from CDS scenarios spec."""
-        return {
-            "Basis": 20,
-            "Basket": 15,
-            "Index": 10,
-            "SingleName": 30,
-            "Tranche": 25,
-        }
-    
-    def _get_trade_type_trade_counts(self) -> Dict[str, int]:
-        """Get # trades for each scenario/trade type combination from CDS scenarios spec."""
-        # Key: (scenario, trade_type) -> # trades to inject
-        return {
-            ("CD_Drift", "Basis"): 1,
-            ("CD_Drift", "Basket"): 1,
-            ("CD_Drift", "Index"): 1,
-            ("CD_Drift", "SingleName"): 1,
-            ("CD_Drift", "Tranche"): 0,  # Excluded
-            ("CD_StaleValue", "Basis"): 1,
-            ("CD_StaleValue", "Basket"): 1,
-            ("CD_StaleValue", "Index"): 1,
-            ("CD_StaleValue", "SingleName"): 1,
-            ("CD_StaleValue", "Tranche"): 1,
-            ("CD_ClusterShock_3d", "Basis"): 1,
-            ("CD_ClusterShock_3d", "Basket"): 1,
-            ("CD_ClusterShock_3d", "Index"): 1,
-            ("CD_ClusterShock_3d", "SingleName"): 1,
-            ("CD_ClusterShock_3d", "Tranche"): 1,
-            ("CD_TradeTypeWide_Shock", "Basis"): 0.5,  # 50% on first OOS date
-            ("CD_TradeTypeWide_Shock", "Basket"): 1.0,  # 100%
-            ("CD_TradeTypeWide_Shock", "Index"): 0.5,  # 50%
-            ("CD_TradeTypeWide_Shock", "SingleName"): 0.5,  # 50%
-            ("CD_TradeTypeWide_Shock", "Tranche"): 1.0,  # 100%
-            ("CD_PointShock", "Basis"): 3,
-            ("CD_PointShock", "Basket"): 1,
-            ("CD_PointShock", "Index"): 2,
-            ("CD_PointShock", "SingleName"): 3,
-            ("CD_PointShock", "Tranche"): 1,
-            ("CD_SignFlip", "Basis"): 3,
-            ("CD_SignFlip", "Basket"): 1,
-            ("CD_SignFlip", "Index"): 2,
-            ("CD_SignFlip", "SingleName"): 3,
-            ("CD_SignFlip", "Tranche"): 1,
-            ("CD_ScaleError", "Basis"): 3,
-            ("CD_ScaleError", "Basket"): 1,
-            ("CD_ScaleError", "Index"): 2,
-            ("CD_ScaleError", "SingleName"): 3,
-            ("CD_ScaleError", "Tranche"): 1,
-            ("CD_SuddenZero", "Basis"): 3,
-            ("CD_SuddenZero", "Basket"): 1,
-            ("CD_SuddenZero", "Index"): 2,
-            ("CD_SuddenZero", "SingleName"): 3,
-            ("CD_SuddenZero", "Tranche"): 1,
-        }
-    
-    def _get_drift_days_by_type(self) -> Dict[str, int]:
-        """Get # days for CD_Drift by trade type from spec."""
-        return {
-            "Basis": 15,
-            "Basket": 10,
-            "Index": 15,
-            "SingleName": 15,
-            "Tranche": 0,  # Excluded
-        }
-    
-    def _get_stale_days(self) -> int:
-        """Get # days for CD_StaleValue (same for all trade types)."""
-        return 5
     
     # ========================================================================
     # Scenario 1: CD_Drift
@@ -145,9 +89,9 @@ class CdsOutlierInjector(OutlierInjector):
         
         if not self._mad_stats:
             train_data = self._get_train_data(df)
-            self._compute_mad_stats(train_data, [cds_column.CREDIT_DELTA_SINGLE])
+            self._compute_mad_stats(train_data, [self.feature_column])
         
-        drift_days_by_type = self._get_drift_days_by_type()
+        drift_days_by_type = self.config.drift_days_by_type
         eligible_mask = self._eligible_mask(df)
         
         # Apply to exactly 1 trade per trade type (spec says "1 trade" per type)
@@ -175,7 +119,7 @@ class CdsOutlierInjector(OutlierInjector):
             last_dates = all_eligible_dates[-T:]
             
             # Get MAD for this trade
-            mad = self._get_mad(trade_type, cds_column.CREDIT_DELTA_SINGLE)
+            mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
             
             # Apply drift formula: Δ'(i) = Δ(i) + (i/(T-1))·k·MAD for i=0..T-1
@@ -187,7 +131,7 @@ class CdsOutlierInjector(OutlierInjector):
                     # Linear scaling from 0 to 1 over T days
                     scale_factor = i / (T - 1) if T > 1 else 0
                     drift = sign * scale_factor * self.SEVERITY_MEDIUM * mad
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] += drift
+                    df.loc[mask, self.feature_column] += drift
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_Drift"
         
         return df
@@ -212,7 +156,7 @@ class CdsOutlierInjector(OutlierInjector):
         """
         df = dataset.copy()
         eligible_mask = self._eligible_mask(df)
-        stale_days = self._get_stale_days()
+        stale_days = self.config.stale_days
         
         # Apply to exactly 1 trade per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
@@ -236,7 +180,7 @@ class CdsOutlierInjector(OutlierInjector):
             
             # Get the stale value from the day before the stale period
             stale_value = df[(df[main_column.TRADE] == selected_trade) & 
-                            (df[main_column.DATE] == all_eligible_dates[0])][cds_column.CREDIT_DELTA_SINGLE].iloc[0]
+                            (df[main_column.DATE] == all_eligible_dates[0])][self.feature_column].iloc[0]
             
             # Apply stale value to first N dates
             for date in first_dates:
@@ -244,7 +188,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] = stale_value
+                    df.loc[mask, self.feature_column] = stale_value
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_StaleValue"
         
         return df
@@ -271,7 +215,7 @@ class CdsOutlierInjector(OutlierInjector):
         
         if not self._mad_stats:
             train_data = self._get_train_data(df)
-            self._compute_mad_stats(train_data, [cds_column.CREDIT_DELTA_SINGLE])
+            self._compute_mad_stats(train_data, [self.feature_column])
         
         eligible_mask = self._eligible_mask(df)
         shock_days = 3
@@ -301,7 +245,7 @@ class CdsOutlierInjector(OutlierInjector):
             shock_dates = all_eligible_dates[start_idx:start_idx + shock_days]
             
             # Get MAD for this trade type
-            mad = self._get_mad(trade_type, cds_column.CREDIT_DELTA_SINGLE)
+            mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
             shock = sign * self.SEVERITY_MEDIUM * mad
             
@@ -311,7 +255,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] += shock
+                    df.loc[mask, self.feature_column] += shock
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_ClusterShock_3d"
         
         return df
@@ -342,10 +286,10 @@ class CdsOutlierInjector(OutlierInjector):
         
         if not self._mad_stats:
             train_data = self._get_train_data(df)
-            self._compute_mad_stats(train_data, [cds_column.CREDIT_DELTA_SINGLE])
+            self._compute_mad_stats(train_data, [self.feature_column])
         
         eligible_mask = self._eligible_mask(df)
-        trade_type_counts = self._get_trade_type_trade_counts()
+        trade_type_counts = self.config.trade_type_counts
         
         # Find first OOS date (include both original OOS and already-injected rows)
         oos_mask = df[main_column.RECORD_TYPE] != "Train"
@@ -375,7 +319,7 @@ class CdsOutlierInjector(OutlierInjector):
             shuffled_trades = np.random.permutation(trades_on_first_date)
             
             # Get MAD for this trade type
-            mad = self._get_mad(trade_type, cds_column.CREDIT_DELTA_SINGLE)
+            mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
             shock = sign * self.SEVERITY_MEDIUM * mad
             
@@ -390,7 +334,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] += shock
+                    df.loc[mask, self.feature_column] += shock
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_TradeTypeWide_Shock"
                     injected_count += 1
                 else:
@@ -400,7 +344,7 @@ class CdsOutlierInjector(OutlierInjector):
                         # Find first eligible row for this trade and inject
                         trade_rows = df[trade_mask].iloc[:1]
                         idx = trade_rows.index[0]
-                        df.loc[idx, cds_column.CREDIT_DELTA_SINGLE] += shock
+                        df.loc[idx, self.feature_column] += shock
                         df.loc[idx, main_column.RECORD_TYPE] = "CD_TradeTypeWide_Shock"
                         injected_count += 1
         
@@ -428,10 +372,10 @@ class CdsOutlierInjector(OutlierInjector):
         
         if not self._mad_stats:
             train_data = self._get_train_data(df)
-            self._compute_mad_stats(train_data, [cds_column.CREDIT_DELTA_SINGLE])
+            self._compute_mad_stats(train_data, [self.feature_column])
         
         eligible_mask = self._eligible_mask(df)
-        trade_type_counts = self._get_trade_type_trade_counts()
+        trade_type_counts = self.config.trade_type_counts
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
@@ -449,7 +393,7 @@ class CdsOutlierInjector(OutlierInjector):
             selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
             
             # Get MAD for this trade type
-            mad = self._get_mad(trade_type, cds_column.CREDIT_DELTA_SINGLE)
+            mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
             shock = sign * self.SEVERITY_MEDIUM * mad
             
@@ -466,7 +410,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] += shock
+                    df.loc[mask, self.feature_column] += shock
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_PointShock"
         
         return df
@@ -491,7 +435,7 @@ class CdsOutlierInjector(OutlierInjector):
         """
         df = dataset.copy()
         eligible_mask = self._eligible_mask(df)
-        trade_type_counts = self._get_trade_type_trade_counts()
+        trade_type_counts = self.config.trade_type_counts
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
@@ -521,7 +465,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] *= -1
+                    df.loc[mask, self.feature_column] *= -1
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_SignFlip"
         
         return df
@@ -548,7 +492,7 @@ class CdsOutlierInjector(OutlierInjector):
         """
         df = dataset.copy()
         eligible_mask = self._eligible_mask(df)
-        trade_type_counts = self._get_trade_type_trade_counts()
+        trade_type_counts = self.config.trade_type_counts
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
@@ -583,7 +527,7 @@ class CdsOutlierInjector(OutlierInjector):
                 if mask.sum() > 0:
                     # Randomly choose ×scale or /scale
                     factor = base_scale if np.random.random() > 0.5 else 1.0 / base_scale
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] *= factor
+                    df.loc[mask, self.feature_column] *= factor
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_ScaleError"
         
         return df
@@ -608,7 +552,7 @@ class CdsOutlierInjector(OutlierInjector):
         """
         df = dataset.copy()
         eligible_mask = self._eligible_mask(df)
-        trade_type_counts = self._get_trade_type_trade_counts()
+        trade_type_counts = self.config.trade_type_counts
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
@@ -638,7 +582,7 @@ class CdsOutlierInjector(OutlierInjector):
                 mask &= eligible_mask
                 
                 if mask.sum() > 0:
-                    df.loc[mask, cds_column.CREDIT_DELTA_SINGLE] = 0.0
+                    df.loc[mask, self.feature_column] = 0.0
                     df.loc[mask, main_column.RECORD_TYPE] = "CD_SuddenZero"
         
         return df

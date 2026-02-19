@@ -6,6 +6,6 @@ Provides OutlierInjector base class and implementations for PnL and CDS injectio
 
 from .base import OutlierInjector
 from .pnl import PnLOutlierInjector
-from .cds import CdsOutlierInjector
+from .credit_delta import CreditDeltaOutlierInjector
 
-__all__ = ['OutlierInjector', 'PnLOutlierInjector', 'CdsOutlierInjector']
+__all__ = ['OutlierInjector', 'PnLOutlierInjector', 'CreditDeltaOutlierInjector', 'CdsOutlierInjector']

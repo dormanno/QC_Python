@@ -98,10 +98,13 @@ preset_temporal_multivariate_pnl = QCEnginePreset(
 )
 
 methods_config_robust_univariate = {
-    QCMethodDefinitions.ROBUST_Z: 0.35,
-    QCMethodDefinitions.IQR: 0.20,
-    QCMethodDefinitions.ECDF: 0.25,
-    QCMethodDefinitions.HAMPEL: 0.20
+    QCMethodDefinitions.ROBUST_Z: 0.20,
+    QCMethodDefinitions.ECDF: 0.20,
+    QCMethodDefinitions.HAMPEL: 0.20,
+    QCMethodDefinitions.ROLLING: 0.10,
+    QCMethodDefinitions.IQR: 0.10,    
+    QCMethodDefinitions.LOF: 0.10,
+    QCMethodDefinitions.ISOLATION_FOREST: 0.10
 }
 
 preset_robust_univariate_cdi = QCEnginePreset(

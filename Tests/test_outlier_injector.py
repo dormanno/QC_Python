@@ -3,9 +3,10 @@ import os
 import tempfile
 import shutil
 import pandas as pd
-from IO.input import PnLInput, CreditDeltaSingleInput
-from column_names import main_column, cds_column
-from Tests.outlier_injectors import PnLOutlierInjector, CdsOutlierInjector
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
+from column_names import main_column, cds_column, cdi_column
+from Tests.outlier_injectors import PnLOutlierInjector, CreditDeltaOutlierInjector
+from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -168,7 +169,8 @@ class TestCdsOutlierInjector(unittest.TestCase):
                 split_identifier=main_column.TRADE_TYPE
             )
 
-            injector = CdsOutlierInjector()
+            config = CreditDeltaInjectorConfig.cds_preset()
+            injector = CreditDeltaOutlierInjector(config=config)
             injected_df = injector.inject(original_df)
 
             # 1) Shape should be identical (or have RecordType added if not in original)
@@ -263,7 +265,8 @@ class TestCdsOutlierInjector(unittest.TestCase):
                 split_identifier=main_column.TRADE_TYPE
             )
 
-            injector = CdsOutlierInjector()
+            config = CreditDeltaInjectorConfig.cds_preset()
+            injector = CreditDeltaOutlierInjector(config=config)
             injected_df = injector.inject(original_df)
 
             # Count injections per scenario and trade type
@@ -292,7 +295,7 @@ class TestCdsOutlierInjector(unittest.TestCase):
                 split_identifier=main_column.TRADE_TYPE
             )
 
-            injector = CdsOutlierInjector()
+            injector = CreditDeltaOutlierInjector(config=CreditDeltaInjectorConfig.cds_preset())
             injected_df = injector.inject(original_df)
 
             # Build enriched dataset
@@ -316,6 +319,181 @@ class TestCdsOutlierInjector(unittest.TestCase):
             # Ensure at least one injected value is present
             any_injected = enriched_df[injected_cds_col].notna().any()
             self.assertTrue(any_injected, "No injected CDS values found")
+
+            # Export for review
+            output_name = os.path.splitext(original_input_file)[0] + "_injected.csv"
+            output_path = os.path.join(temp_dir, output_name)
+            enriched_df.to_csv(output_path, index=False)
+            self.assertTrue(os.path.exists(output_path), f"Output file not created: {output_path}")
+
+            # Copy output to original directory for review
+            shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, output_name))
+
+
+class TestCdiOutlierInjector(unittest.TestCase):
+
+    def test_cdi_injections_applied(self):
+        """Validate that CDI injections are applied correctly to OOS data."""
+        original_input_file = "CreditDeltaIndex_Input_Train-OOS.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaIndexInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            config = CreditDeltaInjectorConfig.credit_delta_index_preset()
+            injector = CreditDeltaOutlierInjector(config=config)
+            injected_df = injector.inject(original_df)
+
+            # 1) Shape should be identical (or have RecordType added if not in original)
+            if main_column.RECORD_TYPE not in original_df.columns:
+                # Injector adds RecordType if missing
+                self.assertEqual(
+                    original_df.shape[0],
+                    injected_df.shape[0],
+                    "Row count differs"
+                )
+                self.assertEqual(
+                    original_df.shape[1] + 1,  # +1 for RecordType column added by injector
+                    injected_df.shape[1],
+                    "Column count should match (or differ by 1 if RecordType was added)"
+                )
+            else:
+                self.assertEqual(
+                    original_df.shape,
+                    injected_df.shape,
+                    "Injected dataset shape differs from original"
+                )
+
+            # 2) Original should contain only Train and OOS labels
+            if main_column.RECORD_TYPE in original_df.columns:
+                allowed_labels = {"Train", "OOS"}
+                original_labels = set(original_df[main_column.RECORD_TYPE].astype(str).unique())
+                self.assertTrue(
+                    original_labels.issubset(allowed_labels),
+                    f"Original dataset has unexpected RecordType labels: {sorted(original_labels - allowed_labels)}"
+                )
+
+            # 3) All CDI injection scenarios should be present
+            expected_scenarios = {
+                "CD_Drift",
+                "CD_StaleValue",
+                "CD_PointShock",
+                "CD_SignFlip",
+                "CD_ScaleError",
+                "CD_SuddenZero",
+            }
+
+            injected_labels = set(
+                injected_df[main_column.RECORD_TYPE]
+                .astype(str)
+                .unique()
+            )
+
+            missing = expected_scenarios - injected_labels
+            self.assertFalse(
+                missing,
+                f"Missing CDI injection scenarios: {sorted(missing)}"
+            )
+
+            # 4) No Train rows should be changed
+            if main_column.RECORD_TYPE in original_df.columns:
+                train_mask = original_df[main_column.RECORD_TYPE] == "Train"
+                if train_mask.any():
+                    pd.testing.assert_frame_equal(
+                        original_df.loc[train_mask].reset_index(drop=True),
+                        injected_df.loc[train_mask].reset_index(drop=True),
+                        check_dtype=False
+                    )
+
+            # 5) All injected rows must be OOS (or newly added if RecordType didn't exist)
+            injected_mask = injected_df[main_column.RECORD_TYPE].astype(str).isin(expected_scenarios)
+            self.assertTrue(
+                injected_mask.any(),
+                "No injected rows found in dataset"
+            )
+            
+            # Verify that modified rows were originally OOS (if RecordType existed in original)
+            if main_column.RECORD_TYPE in original_df.columns:
+                original_injected_record_types = original_df.loc[injected_mask, main_column.RECORD_TYPE].unique()
+                self.assertTrue(
+                    all(rt in {"OOS", "Train"} for rt in original_injected_record_types),
+                    f"Some injected rows were not from OOS: {original_injected_record_types}"
+                )
+
+    def test_cdi_injections_by_trade_type(self):
+        """Validate that CDI injections respect per-trade-type configuration."""
+        original_input_file = "CreditDeltaIndex_Input_Train-OOS.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaIndexInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            config = CreditDeltaInjectorConfig.credit_delta_index_preset()
+            injector = CreditDeltaOutlierInjector(config=config)
+            injected_df = injector.inject(original_df)
+
+            # Count injections per scenario and trade type
+            for scenario in ["CD_Drift", "CD_StaleValue", "CD_PointShock"]:
+                scenario_mask = injected_df[main_column.RECORD_TYPE] == scenario
+                if scenario_mask.any():
+                    trade_types = injected_df.loc[scenario_mask, main_column.TRADE_TYPE].unique()
+                    # Should only have trade types from the original dataset
+                    original_trade_types = original_df[main_column.TRADE_TYPE].unique()
+                    self.assertTrue(
+                        all(tt in original_trade_types for tt in trade_types),
+                        f"Unknown trade types in {scenario}: {trade_types}"
+                    )
+
+    def test_cdi_injections_export_enriched(self):
+        """Export enriched file with original and injected CDI values for review."""
+        original_input_file = "CreditDeltaIndex_Input_Train-OOS.csv"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = CreditDeltaIndexInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            injector = CreditDeltaOutlierInjector(config=CreditDeltaInjectorConfig.credit_delta_index_preset())
+            injected_df = injector.inject(original_df)
+
+            # Build enriched dataset
+            enriched_df = original_df.copy()
+            if main_column.RECORD_TYPE in injected_df.columns:
+                enriched_df[main_column.RECORD_TYPE] = injected_df[main_column.RECORD_TYPE]
+
+            # Add injected value column for CDI
+            injected_cdi_col = f"{cdi_column.CREDIT_DELTA_INDEX}_injected"
+            changed_mask = injected_df[cdi_column.CREDIT_DELTA_INDEX] != original_df[cdi_column.CREDIT_DELTA_INDEX]
+            enriched_df[injected_cdi_col] = injected_df[cdi_column.CREDIT_DELTA_INDEX].where(changed_mask, pd.NA)
+
+            # Basic validations
+            self.assertEqual(
+                enriched_df.shape[0],
+                original_df.shape[0],
+                "Enriched dataset row count differs from original"
+            )
+            self.assertIn(injected_cdi_col, enriched_df.columns, "Missing injected CDI column")
+
+            # Ensure at least one injected value is present
+            any_injected = enriched_df[injected_cdi_col].notna().any()
+            self.assertTrue(any_injected, "No injected CDI values found")
 
             # Export for review
             output_name = os.path.splitext(original_input_file)[0] + "_injected.csv"

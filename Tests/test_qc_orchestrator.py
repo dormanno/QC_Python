@@ -4,13 +4,15 @@ import pandas as pd
 import tempfile
 import shutil
 from Engine import qc_engine_presets
+from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
+from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 from qc_orchestrator import QCOrchestrator
 from Engine.feature_normalizer import FeatureNormalizer
 from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from IO.output import Output
 from column_names import pnl_column, cds_column, cdi_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
-from Tests.outlier_injectors import PnLOutlierInjector, CdsOutlierInjector
+from Tests.outlier_injectors import PnLOutlierInjector
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -139,12 +141,13 @@ class TestQCOrchestrator(unittest.TestCase):
 
     def test_QC_CreditDeltaSingle_with_injections(self):
         """Test QC for Credit Delta Single data with outlier injections."""
+        config = CreditDeltaInjectorConfig.cds_preset()
         self._run_qc_test(
             "CreditDeltaSingle_Input.csv",
             CreditDeltaSingleInput(),
             cds_column,
             qc_engine_presets.preset_reactive_univariate_cds,
-            injector=CdsOutlierInjector(),
+            injector=CreditDeltaOutlierInjector(config=config),
             inject=True)
 
     def test_QC_CreditDeltaIndex(self):
@@ -157,11 +160,13 @@ class TestQCOrchestrator(unittest.TestCase):
 
     def test_QC_CreditDeltaIndex_with_injections(self):
         """Test QC for Credit Delta Index data with outlier injections."""
+        config = CreditDeltaInjectorConfig.credit_delta_index_preset()
         self._run_qc_test(
-            "CreditDeltaIndex_Input.csv",
+            "CreditDeltaIndex_Input_Train-OOS.csv",
             CreditDeltaIndexInput(),
             cdi_column,
             qc_engine_presets.preset_robust_univariate_cdi,
+            injector=CreditDeltaOutlierInjector(config=config),
             inject=True)
 
 if __name__ == '__main__':
