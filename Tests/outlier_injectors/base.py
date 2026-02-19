@@ -34,13 +34,15 @@ class OutlierInjector(ABC):
     SEVERITY_HIGH = 12
     SEVERITY_EXTREME = 24
     
-    def __init__(self, random_seed: Optional[int] = 42):
+    def __init__(self, severity: float = SEVERITY_MEDIUM, random_seed: Optional[int] = 42):
         """
         Initialize the injector.
         
         Args:
+            severity: Default severity multiplier (k) applied across all injection scenarios
             random_seed: Random seed for reproducibility
         """
+        self.severity = severity
         self.random_seed = random_seed
         if random_seed is not None:
             np.random.seed(random_seed)

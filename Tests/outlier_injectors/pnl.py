@@ -20,12 +20,16 @@ class PnLOutlierInjector(OutlierInjector):
     in PnL reporting systems.
     """
     
-    # Re-export severity constants for convenience in default parameters
-    SEVERITY_SMALL = OutlierInjector.SEVERITY_SMALL
-    SEVERITY_MEDIUM = OutlierInjector.SEVERITY_MEDIUM
-    SEVERITY_HIGH = OutlierInjector.SEVERITY_HIGH
-    SEVERITY_EXTREME = OutlierInjector.SEVERITY_EXTREME
-    
+    def __init__(self, severity: float = OutlierInjector.SEVERITY_MEDIUM, random_seed: int = 42):
+        """
+        Initialize the PnL injector.
+        
+        Args:
+            severity: Default severity multiplier (k) applied across all injection scenarios
+            random_seed: Random seed for reproducibility
+        """
+        super().__init__(severity=severity, random_seed=random_seed)
+
     def inject(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """
         Inject outliers into the PnL dataset.
@@ -76,7 +80,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with injected spikes
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         
@@ -132,7 +136,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with injected step changes
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         
@@ -315,7 +319,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with injected spikes
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         
@@ -415,7 +419,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with reallocation bugs
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         
@@ -476,7 +480,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with identity breaks
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         
@@ -531,7 +535,7 @@ class PnLOutlierInjector(OutlierInjector):
             Dataset with cross-family inconsistencies
         """
         if severity is None:
-            severity = self.SEVERITY_MEDIUM
+            severity = self.severity
             
         df = dataset.copy()
         

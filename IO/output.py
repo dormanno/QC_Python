@@ -35,11 +35,6 @@ class Output:
         return os.path.join(os.path.dirname(input_path), f"{base}{suffix}{ext}")
 
     def save_csv(self, df: pd.DataFrame, out_path: str) -> str:
-        # Optional: convert Categorical flag to plain string for friendliness
-        # if "QC_Flag" in df.columns and pd.api.types.is_categorical_dtype(df["QC_Flag"]):
-        #     df = df.copy()
-        #     df["QC_Flag"] = df["QC_Flag"].astype(str)
-
         df.to_csv(out_path, index=False, date_format="%Y-%m-%d")
         return out_path
 

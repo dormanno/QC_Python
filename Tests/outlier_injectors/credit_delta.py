@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from column_names import main_column
 from .base import OutlierInjector
-from .credit_delta_config import CreditDeltaInjectorConfig
+from .credit_delta_config import CreditDeltaInjectorConfig, ScenarioNames
 
 
 class CreditDeltaOutlierInjector(OutlierInjector):
@@ -22,21 +22,17 @@ class CreditDeltaOutlierInjector(OutlierInjector):
     CDS_InjectionScenarios.md, adaptable to different datasets.
     """
     
-    # Re-export severity constants for convenience in default parameters
-    SEVERITY_SMALL = OutlierInjector.SEVERITY_SMALL
-    SEVERITY_MEDIUM = OutlierInjector.SEVERITY_MEDIUM
-    SEVERITY_HIGH = OutlierInjector.SEVERITY_HIGH
-    SEVERITY_EXTREME = OutlierInjector.SEVERITY_EXTREME
-    
-    def __init__(self, config: CreditDeltaInjectorConfig, random_seed: int = 42):
+    def __init__(self, config: CreditDeltaInjectorConfig, severity: float = OutlierInjector.SEVERITY_MEDIUM,
+                 random_seed: int = 42):
         """
         Initialize the Credit Delta injector with configuration.
         
         Args:
             config: Configuration object containing all numerical parameters
+            severity: Default severity multiplier (k) applied across all injection scenarios
             random_seed: Random seed for reproducibility
         """
-        super().__init__(random_seed=random_seed)
+        super().__init__(severity=severity, random_seed=random_seed)
         self.config = config
         self.feature_column = config.feature_column
     
@@ -55,15 +51,28 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         df = dataset.copy()
         df = self._ensure_record_type(df)
 
-        # Apply all scenarios sequentially
-        df = self.inject_cd_drift(df)
-        df = self.inject_cd_stale_value(df)
-        df = self.inject_cd_cluster_shock_3d(df)
-        df = self.inject_cd_trade_type_wide_shock(df)
-        df = self.inject_cd_point_shock(df)
-        df = self.inject_cd_sign_flip(df)
-        df = self.inject_cd_scale_error(df)
-        df = self.inject_cd_sudden_zero(df)
+        # Determine which scenarios have at least one non-zero trade type entry in config
+        active_scenarios = {
+            scenario
+            for (scenario, _), count in self.config.trade_type_counts.items()
+            if count > 0
+        }
+
+        # Apply configured scenarios sequentially
+        scenario_methods = [
+            (ScenarioNames.DRIFT,               self.inject_cd_drift),
+            (ScenarioNames.STALE_VALUE,          self.inject_cd_stale_value),
+            (ScenarioNames.CLUSTER_SHOCK_3D,     self.inject_cd_cluster_shock_3d),
+            (ScenarioNames.TRADE_TYPE_WIDE_SHOCK, self.inject_cd_trade_type_wide_shock),
+            (ScenarioNames.POINT_SHOCK,          self.inject_cd_point_shock),
+            (ScenarioNames.SIGN_FLIP,            self.inject_cd_sign_flip),
+            (ScenarioNames.SCALE_ERROR,          self.inject_cd_scale_error),
+            (ScenarioNames.SUDDEN_ZERO,          self.inject_cd_sudden_zero),
+        ]
+
+        for scenario_name, method in scenario_methods:
+            if scenario_name in active_scenarios:
+                df = method(df)
 
         return df
     
@@ -97,7 +106,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         # Apply to exactly 1 trade per trade type (spec says "1 trade" per type)
         for trade_type in df[main_column.TRADE_TYPE].unique():
             T = drift_days_by_type.get(trade_type, 0)
-            if T == 0:  # Tranche is excluded
+            if T == 0:
                 continue
             
             # Get all trades of this type and their eligible dates
@@ -130,9 +139,9 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 if mask.sum() > 0:
                     # Linear scaling from 0 to 1 over T days
                     scale_factor = i / (T - 1) if T > 1 else 0
-                    drift = sign * scale_factor * self.SEVERITY_MEDIUM * mad
+                    drift = sign * scale_factor * self.severity * mad
                     df.loc[mask, self.feature_column] += drift
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_Drift"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.DRIFT
         
         return df
     
@@ -189,7 +198,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] = stale_value
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_StaleValue"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.STALE_VALUE
         
         return df
     
@@ -247,7 +256,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             # Get MAD for this trade type
             mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
-            shock = sign * self.SEVERITY_MEDIUM * mad
+            shock = sign * self.severity * mad
             
             # Apply shock to 3 consecutive dates
             for date in shock_dates:
@@ -256,7 +265,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] += shock
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_ClusterShock_3d"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.CLUSTER_SHOCK_3D
         
         return df
     
@@ -301,7 +310,9 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         
         # For each trade type, select percentage of trades present on first OOS date
         for trade_type in df[main_column.TRADE_TYPE].unique():
-            pct = trade_type_counts.get(("CD_TradeTypeWide_Shock", trade_type), 0.5)
+            pct = trade_type_counts.get((ScenarioNames.TRADE_TYPE_WIDE_SHOCK, trade_type), 0)
+            if pct == 0:
+                continue
             
             # Get trades of this type on the first OOS date (including already-injected, for counting)
             first_date_mask = (df[main_column.DATE] == first_oos_date) & \
@@ -321,7 +332,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             # Get MAD for this trade type
             mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
-            shock = sign * self.SEVERITY_MEDIUM * mad
+            shock = sign * self.severity * mad
             
             # Inject until we reach target_count, using backup trades if needed
             injected_count = 0
@@ -335,7 +346,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] += shock
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_TradeTypeWide_Shock"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.TRADE_TYPE_WIDE_SHOCK
                     injected_count += 1
                 else:
                     # If first OOS date row is already injected, try any eligible date for this trade
@@ -345,7 +356,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                         trade_rows = df[trade_mask].iloc[:1]
                         idx = trade_rows.index[0]
                         df.loc[idx, self.feature_column] += shock
-                        df.loc[idx, main_column.RECORD_TYPE] = "CD_TradeTypeWide_Shock"
+                        df.loc[idx, main_column.RECORD_TYPE] = ScenarioNames.TRADE_TYPE_WIDE_SHOCK
                         injected_count += 1
         
         return df
@@ -395,7 +406,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             # Get MAD for this trade type
             mad = self._get_mad(trade_type, self.feature_column)
             sign = self._random_sign()
-            shock = sign * self.SEVERITY_MEDIUM * mad
+            shock = sign * self.severity * mad
             
             # Apply shock on 1 random day for each selected trade
             for trade_id in selected_trades:
@@ -411,7 +422,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] += shock
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_PointShock"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.POINT_SHOCK
         
         return df
     
@@ -466,7 +477,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] *= -1
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_SignFlip"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SIGN_FLIP
         
         return df
     
@@ -478,9 +489,8 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         Inject scale/unit error for specified trades per type on 1 random day.
         
         Per trade type spec: Basis:3, Basket:1, Index:2, SingleName:3, Tranche:1 trades.
-        Trade-type specific scaling:
-        - Index: 1000× or /1000 (basis point vs percentage confusion)
-        - Others: 100× or /100 (currency/notional scaling error)
+        Trade-type specific scaling from config (e.g., 100× or 1000×),
+        randomly applied as ×scale or /scale.
         
         Real-world: Unit/currency/notional scaling error, decimal placement bug.
         
@@ -509,8 +519,8 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             n_to_inject = min(trade_count, len(type_trades))
             selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
             
-            # Determine scale factor (Index uses 1000, others use 100)
-            base_scale = 1000.0 if trade_type == "Index" else 100.0
+            # Determine scale factor from config for this trade type
+            base_scale = self.config.scale_factors_by_type.get(trade_type, 100.0)
             
             # Apply scale error on 1 random day for each selected trade
             for trade_id in selected_trades:
@@ -528,7 +538,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                     # Randomly choose ×scale or /scale
                     factor = base_scale if np.random.random() > 0.5 else 1.0 / base_scale
                     df.loc[mask, self.feature_column] *= factor
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_ScaleError"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SCALE_ERROR
         
         return df
     
@@ -583,6 +593,6 @@ class CreditDeltaOutlierInjector(OutlierInjector):
                 
                 if mask.sum() > 0:
                     df.loc[mask, self.feature_column] = 0.0
-                    df.loc[mask, main_column.RECORD_TYPE] = "CD_SuddenZero"
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SUDDEN_ZERO
         
         return df

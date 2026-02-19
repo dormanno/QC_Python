@@ -30,6 +30,15 @@ METHODS_CONFIG = {
 
 ROLL_WINDOW = 20
 
+# Severity levels for outlier injection (multipliers for MAD/IQR scale)
+SEVERITY_SMALL = 3
+SEVERITY_MEDIUM = 6
+SEVERITY_HIGH = 12
+SEVERITY_EXTREME = 24
+
+# Severity used in injection tests
+INJECTION_SEVERITY = SEVERITY_MEDIUM
+
 class TestQCOrchestrator(unittest.TestCase):
     
     def _run_qc_test(self, original_input_file, input_handler, columnSet, engine_preset, injector=None, inject=False):
@@ -128,7 +137,7 @@ class TestQCOrchestrator(unittest.TestCase):
             PnLInput(),
             pnl_column,
             qc_engine_presets.preset_temporal_multivariate_pnl,
-            injector=PnLOutlierInjector(),
+            injector=PnLOutlierInjector(severity=INJECTION_SEVERITY),
             inject=True)
     
     def test_QC_CreditDeltaSingle(self):
@@ -147,7 +156,7 @@ class TestQCOrchestrator(unittest.TestCase):
             CreditDeltaSingleInput(),
             cds_column,
             qc_engine_presets.preset_reactive_univariate_cds,
-            injector=CreditDeltaOutlierInjector(config=config),
+            injector=CreditDeltaOutlierInjector(config=config, severity=INJECTION_SEVERITY),
             inject=True)
 
     def test_QC_CreditDeltaIndex(self):
@@ -166,7 +175,7 @@ class TestQCOrchestrator(unittest.TestCase):
             CreditDeltaIndexInput(),
             cdi_column,
             qc_engine_presets.preset_robust_univariate_cdi,
-            injector=CreditDeltaOutlierInjector(config=config),
+            injector=CreditDeltaOutlierInjector(config=config, severity=INJECTION_SEVERITY),
             inject=True)
 
 if __name__ == '__main__':

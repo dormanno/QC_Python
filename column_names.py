@@ -159,12 +159,12 @@ class PnLColumnSet(FeatureColumnSet):
 @dataclass(frozen=True)
 class QCColumnSet:
     """QC output columns"""
-    QC_FLAG: str = "QC_Flag"
+    QC_FLAG: str = "EQAF_Flag"
     IF_SCORE: str = "IF_score"
     ROBUST_Z_SCORE: str = "RobustZ_score"
     ROLLING_SCORE: str = "Rolling_score"
     IQR_SCORE: str = "IQR_score"
-    AGGREGATED_SCORE: str = "QC_Aggregated"
+    AGGREGATED_SCORE: str = "EQAF_score"
     LOF_SCORE: str = "LOF_score"
     ECDF_SCORE: str = "ECDF_score"
     HAMPEL_SCORE: str = "Hampel_score"

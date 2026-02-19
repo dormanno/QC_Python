@@ -199,7 +199,12 @@ class QCOrchestrator:
         )
         for weight, scores in family_method_scores:
             combined_method_scores += weight * scores
-        
+
+        # Reorder method score columns to respect SCORE_COLUMNS canonical order
+        ordered = [c for c in qc_column.SCORE_COLUMNS if c in combined_method_scores.columns]
+        remaining = [c for c in combined_method_scores.columns if c not in ordered]
+        combined_method_scores = combined_method_scores[ordered + remaining]
+
         # Combine aggregated scores: weighted noisy-OR = 1 - prod((1 - s_i) ^ w_i)
         survival = pd.Series(1.0, index=day_data.index)
         for weight, agg in family_agg_scores:
