@@ -11,7 +11,7 @@ from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinit
 from QC_methods import IsolationForestQC, RobustZScoreQC, IQRQC, RollingZScoreQC, LOFQC, ECDFQC
 from QC_methods.hampel import HampelFilterQC
 from QC_methods.qc_base import StatefulQCMethod
-from Engine.aggregator import ScoreAggregator
+from Engine.aggregator import ConsensusMode, ScoreAggregator
 from Engine.score_normalizer import ScoreNormalizer
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,8 @@ class QCEngine:
                  qc_features: List[str],
                  methods_config: dict[QCMethodDefinition, float],
                  roll_window: int = 20,
-                 score_normalizer: Optional[ScoreNormalizer] = None):
+                 score_normalizer: Optional[ScoreNormalizer] = None,
+                 consensus: ConsensusMode | str = ConsensusMode.NONE):
         """Initialize QC Engine with features, method configuration, and window size.
         
         Args:
@@ -43,6 +44,7 @@ class QCEngine:
                 Only methods included in this dict will be enabled.
             roll_window (int): Window size for rolling methods.
             score_normalizer (ScoreNormalizer): Quantile normalizer instance for score-level normalization.
+            consensus (ConsensusMode | str): Consensus mode for aggregation.
         """
         self.qc_features = qc_features
         self.roll_window = roll_window
@@ -79,7 +81,7 @@ class QCEngine:
                    for method, weight in methods_config.items()}
         
         # Initialize aggregator
-        self.aggregator = ScoreAggregator(weights=weights)
+        self.aggregator = ScoreAggregator(weights=weights, consensus=consensus)
         
         logger.info(f"QC Engine initialized with {len(self.qc_methods)} methods: {list(self.qc_methods.keys())}")
     
@@ -197,7 +199,7 @@ class QCEngine:
 
         # Aggregate normalized scores (handles NaNs per row)
         aggregated_score = self.aggregator.combine(day_scores)
-        qc_flag = self.aggregator.map_to_flag(aggregated_score).to_frame()
+        qc_flag = self.aggregator.map_to_flag(aggregated_score, simpleMode=True).to_frame()
         
         return day_scores, aggregated_score, qc_flag
     

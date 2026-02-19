@@ -10,6 +10,7 @@ from typing import List, Dict
 
 from column_names import pnl_column, cds_column, cdi_column, qc_column, QCFeatureFamily
 from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
+from Engine.aggregator import ConsensusMode
 from Engine.qc_engine import QCEngine
 from Engine.score_normalizer import ScoreNormalizer
 
@@ -29,6 +30,7 @@ class QCEnginePreset:
     qc_feature_families: List[QCFeatureFamily]
     methods_config: Dict[QCMethodDefinition, float]
     roll_window: int = 20
+    consensus: ConsensusMode | str = ConsensusMode.NONE
 
     def __post_init__(self):
         """Validate that feature family weights sum to 1."""
@@ -53,7 +55,8 @@ class QCEnginePreset:
             qc_features=list(family.features),
             methods_config=self.methods_config,
             roll_window=self.roll_window,
-            score_normalizer=ScoreNormalizer()
+            score_normalizer=ScoreNormalizer(),
+            consensus=self.consensus
         )
 
     @property
@@ -94,23 +97,25 @@ method_config_temporal_multivariate = {
 preset_temporal_multivariate_pnl = QCEnginePreset(
     qc_feature_families=pnl_column.QC_FEATURE_FAMILIES,
     methods_config=method_config_temporal_multivariate,
-    roll_window=20
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY
 )
 
 methods_config_robust_univariate = {
-    QCMethodDefinitions.ROBUST_Z: 0.20,
-    QCMethodDefinitions.ECDF: 0.20,
-    QCMethodDefinitions.HAMPEL: 0.20,
-    QCMethodDefinitions.ROLLING: 0.10,
-    QCMethodDefinitions.IQR: 0.10,    
-    QCMethodDefinitions.LOF: 0.10,
-    QCMethodDefinitions.ISOLATION_FOREST: 0.10
+    QCMethodDefinitions.ROBUST_Z: 0.25,
+    # QCMethodDefinitions.ECDF: 0.20,
+    QCMethodDefinitions.HAMPEL: 0.25,
+    QCMethodDefinitions.ROLLING: 0.25,
+    # QCMethodDefinitions.IQR: 0.10,    
+    # QCMethodDefinitions.LOF: 0.10,
+    QCMethodDefinitions.ISOLATION_FOREST: 0.25
 }
 
 preset_robust_univariate_cdi = QCEnginePreset(
     qc_feature_families=cdi_column.QC_FEATURE_FAMILIES,
     methods_config=methods_config_robust_univariate,
-    roll_window=20
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY
 )
 
 methods_reactive_univariate = {
@@ -123,7 +128,8 @@ methods_reactive_univariate = {
 preset_reactive_univariate_cds = QCEnginePreset(
     qc_feature_families=cds_column.QC_FEATURE_FAMILIES,
     methods_config=methods_reactive_univariate,
-    roll_window=20
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY
 )
 
 # ============================================================================

@@ -213,7 +213,7 @@ class QCOrchestrator:
         
         # Map to flag using first family engine's aggregator thresholds
         first_engine = family_engines[families[0].name]
-        qc_flag = first_engine.aggregator.map_to_flag(combined_agg).to_frame()
+        qc_flag = first_engine.aggregator.map_to_flag(combined_agg, simpleMode=True).to_frame()
         
         return pd.concat([
             day_data[[main_column.TRADE]].reset_index(drop=True),
