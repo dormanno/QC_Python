@@ -168,6 +168,7 @@ class QCColumnSet:
     LOF_SCORE: str = "LOF_score"
     ECDF_SCORE: str = "ECDF_score"
     HAMPEL_SCORE: str = "Hampel_score"
+    STALE_SCORE: str = "IsStale"
     
     # Derived lists (initialized in __post_init__)
     SCORE_COLUMNS: list = None
@@ -182,6 +183,7 @@ class QCColumnSet:
             self.LOF_SCORE,
             self.ECDF_SCORE,
             self.HAMPEL_SCORE,
+            self.STALE_SCORE,
             self.AGGREGATED_SCORE,             
             self.QC_FLAG
         ])

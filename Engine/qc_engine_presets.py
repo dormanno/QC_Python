@@ -26,14 +26,21 @@ class QCEnginePreset:
         qc_feature_families: List of QCFeatureFamily instances defining feature groups.
         methods_config: Dictionary mapping QCMethodDefinition instances to weights.
         roll_window: Window size for rolling methods.
+        filters: List of QCMethodDefinition instances for filter methods (e.g., stale value detection).
     """
     qc_feature_families: List[QCFeatureFamily]
     methods_config: Dict[QCMethodDefinition, float]
     roll_window: int = 20
     consensus: ConsensusMode | str = ConsensusMode.NONE
+    filters: List[QCMethodDefinition] = None
 
     def __post_init__(self):
-        """Validate that feature family weights sum to 1."""
+        """Validate feature family weights and initialize filters."""
+        # Initialize filters to empty list if not provided
+        if self.filters is None:
+            object.__setattr__(self, 'filters', [])
+
+        # Validate that feature family weights sum to 1
         weight_sum = sum(f.weight for f in self.qc_feature_families)
         if abs(weight_sum - 1.0) > 1e-9:
             raise ValueError(
@@ -56,7 +63,8 @@ class QCEnginePreset:
             methods_config=self.methods_config,
             roll_window=self.roll_window,
             score_normalizer=ScoreNormalizer(),
-            consensus=self.consensus
+            consensus=self.consensus,
+            filters=self.filters
         )
 
     @property
@@ -98,7 +106,8 @@ preset_temporal_multivariate_pnl = QCEnginePreset(
     qc_feature_families=pnl_column.QC_FEATURE_FAMILIES,
     methods_config=method_config_temporal_multivariate,
     roll_window=20,
-    consensus=ConsensusMode.QUALIFIED_MAJORITY
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE]
 )
 
 methods_config_robust_univariate = {
@@ -115,7 +124,8 @@ preset_robust_univariate_cdi = QCEnginePreset(
     qc_feature_families=cdi_column.QC_FEATURE_FAMILIES,
     methods_config=methods_config_robust_univariate,
     roll_window=20,
-    consensus=ConsensusMode.QUALIFIED_MAJORITY
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE]
 )
 
 methods_reactive_univariate = {
@@ -129,7 +139,8 @@ preset_reactive_univariate_cds = QCEnginePreset(
     qc_feature_families=cds_column.QC_FEATURE_FAMILIES,
     methods_config=methods_reactive_univariate,
     roll_window=20,
-    consensus=ConsensusMode.QUALIFIED_MAJORITY
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE]
 )
 
 # ============================================================================

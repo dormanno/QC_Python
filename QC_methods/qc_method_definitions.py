@@ -58,6 +58,11 @@ class QCMethodDefinitions:
         score_name=qc_column.HAMPEL_SCORE
     )
     
+    STALE_VALUE = QCMethodDefinition(
+        name='stale_value',
+        score_name=qc_column.STALE_SCORE
+    )
+    
     @classmethod
     def all_methods(cls) -> list[QCMethodDefinition]:
         """Return list of all available QC methods."""
@@ -68,7 +73,8 @@ class QCMethodDefinitions:
             cls.ROLLING,
             cls.LOF,
             cls.ECDF,
-            cls.HAMPEL
+            cls.HAMPEL,
+            cls.STALE_VALUE
         ]
     
     @classmethod
