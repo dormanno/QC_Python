@@ -183,16 +183,16 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             if len(eligible_trade) < stale_days + 1:
                 continue  # Need at least stale_days + 1 to have a value to copy
             
-            # Get first N eligible dates
+            # Get stale source date plus target dates
             all_eligible_dates = sorted(eligible_trade[main_column.DATE].unique())
-            first_dates = all_eligible_dates[:stale_days]
+            target_dates = all_eligible_dates[1:stale_days + 1]
             
-            # Get the stale value from the day before the stale period
+            # Use first eligible date as source value; do not relabel source row as stale
             stale_value = df[(df[main_column.TRADE] == selected_trade) & 
                             (df[main_column.DATE] == all_eligible_dates[0])][self.feature_column].iloc[0]
             
-            # Apply stale value to first N dates
-            for date in first_dates:
+            # Apply stale value to following N eligible dates
+            for date in target_dates:
                 mask = (df[main_column.TRADE] == selected_trade) & (df[main_column.DATE] == date)
                 mask &= eligible_mask
                 

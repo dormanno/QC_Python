@@ -155,6 +155,44 @@ class TestPnLOutlierInjector(unittest.TestCase):
 
 class TestCdsOutlierInjector(unittest.TestCase):
 
+    def test_cds_stale_value_does_not_label_source_row(self):
+        """The source row used for stale propagation must remain unchanged and not relabeled."""
+        config = CreditDeltaInjectorConfig.cds_preset()
+        injector = CreditDeltaOutlierInjector(config=config, random_seed=42)
+
+        dates = pd.date_range("2025-01-01", periods=7, freq="D")
+        source_value = 100.0
+        original_values = [source_value, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0]
+
+        original_df = pd.DataFrame({
+            main_column.RECORD_TYPE: ["OOS"] * 7,
+            main_column.TRADE: ["T_BASIS_1"] * 7,
+            main_column.BOOK: ["B1"] * 7,
+            main_column.TRADE_TYPE: ["Basis"] * 7,
+            main_column.DATE: dates,
+            cds_column.CREDIT_DELTA_SINGLE: original_values,
+        })
+
+        injected_df = injector.inject_cd_stale_value(original_df)
+
+        # Source row (first eligible date) should not be marked stale or modified
+        self.assertEqual(injected_df.loc[0, main_column.RECORD_TYPE], "OOS")
+        self.assertEqual(injected_df.loc[0, cds_column.CREDIT_DELTA_SINGLE], source_value)
+
+        # Following stale_days rows should be stale and equal to source value
+        stale_days = config.stale_days
+        stale_rows = injected_df.iloc[1:1 + stale_days]
+        self.assertTrue((stale_rows[main_column.RECORD_TYPE] == "CD_StaleValue").all())
+        self.assertTrue((stale_rows[cds_column.CREDIT_DELTA_SINGLE] == source_value).all())
+
+        # Remaining rows should stay OOS and unchanged
+        tail_rows = injected_df.iloc[1 + stale_days:]
+        self.assertTrue((tail_rows[main_column.RECORD_TYPE] == "OOS").all())
+        self.assertEqual(
+            tail_rows[cds_column.CREDIT_DELTA_SINGLE].tolist(),
+            original_values[1 + stale_days:]
+        )
+
     def test_cds_injections_applied(self):
         """Validate that CDS injections are applied correctly to OOS data."""
         original_input_file = "CreditDeltaSingle_Input.csv"
