@@ -390,7 +390,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
-            trade_count = int(trade_type_counts.get(("CD_PointShock", trade_type), 0))
+            trade_count = int(trade_type_counts.get((ScenarioNames.POINT_SHOCK, trade_type), 0))
             if trade_count == 0:
                 continue
             
@@ -450,7 +450,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
-            trade_count = int(trade_type_counts.get(("CD_SignFlip", trade_type), 0))
+            trade_count = int(trade_type_counts.get((ScenarioNames.SIGN_FLIP, trade_type), 0))
             if trade_count == 0:
                 continue
             
@@ -506,7 +506,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
-            trade_count = int(trade_type_counts.get(("CD_ScaleError", trade_type), 0))
+            trade_count = int(trade_type_counts.get((ScenarioNames.SCALE_ERROR, trade_type), 0))
             if trade_count == 0:
                 continue
             
@@ -566,7 +566,7 @@ class CreditDeltaOutlierInjector(OutlierInjector):
         
         # Apply to specified number of trades per trade type
         for trade_type in df[main_column.TRADE_TYPE].unique():
-            trade_count = int(trade_type_counts.get(("CD_SuddenZero", trade_type), 0))
+            trade_count = int(trade_type_counts.get((ScenarioNames.SUDDEN_ZERO, trade_type), 0))
             if trade_count == 0:
                 continue
             

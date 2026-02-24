@@ -13,14 +13,14 @@ from column_names import CreditDeltaSingleColumnSet, CreditDeltaIndexColumnSet
 @dataclass(frozen=True)
 class ScenarioNames:
     """Injection scenario type names."""
-    DRIFT = "CD_Drift"
-    STALE_VALUE = "CD_StaleValue"
-    CLUSTER_SHOCK_3D = "CD_ClusterShock_3d"
-    TRADE_TYPE_WIDE_SHOCK = "CD_TradeTypeWide_Shock"
-    POINT_SHOCK = "CD_PointShock"
-    SIGN_FLIP = "CD_SignFlip"
-    SCALE_ERROR = "CD_ScaleError"
-    SUDDEN_ZERO = "CD_SuddenZero"
+    DRIFT = "Drift"
+    STALE_VALUE = "StaleValue"
+    CLUSTER_SHOCK_3D = "ClusterShock_3d"
+    TRADE_TYPE_WIDE_SHOCK = "TradeTypeWide_Shock"
+    POINT_SHOCK = "PointShock"
+    SIGN_FLIP = "SignFlip"
+    SCALE_ERROR = "ScaleError"
+    SUDDEN_ZERO = "SuddenZero"
 
 
 class CreditDeltaInjectorConfig:

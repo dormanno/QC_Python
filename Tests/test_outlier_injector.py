@@ -6,7 +6,7 @@ import pandas as pd
 from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from column_names import main_column, cds_column, cdi_column
 from Tests.outlier_injectors import PnLOutlierInjector, CreditDeltaOutlierInjector
-from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
+from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig, ScenarioNames
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -182,7 +182,7 @@ class TestCdsOutlierInjector(unittest.TestCase):
         # Following stale_days rows should be stale and equal to source value
         stale_days = config.stale_days
         stale_rows = injected_df.iloc[1:1 + stale_days]
-        self.assertTrue((stale_rows[main_column.RECORD_TYPE] == "CD_StaleValue").all())
+        self.assertTrue((stale_rows[main_column.RECORD_TYPE] == "StaleValue").all())
         self.assertTrue((stale_rows[cds_column.CREDIT_DELTA_SINGLE] == source_value).all())
 
         # Remaining rows should stay OOS and unchanged
@@ -242,14 +242,14 @@ class TestCdsOutlierInjector(unittest.TestCase):
 
             # 3) All CDS injection scenarios should be present
             expected_scenarios = {
-                "CD_Drift",
-                "CD_StaleValue",
-                "CD_ClusterShock_3d",
-                "CD_TradeTypeWide_Shock",
-                "CD_PointShock",
-                "CD_SignFlip",
-                "CD_ScaleError",
-                "CD_SuddenZero",
+                ScenarioNames.DRIFT,
+                ScenarioNames.STALE_VALUE,
+                ScenarioNames.CLUSTER_SHOCK_3D,
+                ScenarioNames.TRADE_TYPE_WIDE_SHOCK,
+                ScenarioNames.POINT_SHOCK,
+                ScenarioNames.SIGN_FLIP,
+                ScenarioNames.SCALE_ERROR,
+                ScenarioNames.SUDDEN_ZERO,
             }
 
             injected_labels = set(
@@ -308,7 +308,7 @@ class TestCdsOutlierInjector(unittest.TestCase):
             injected_df = injector.inject(original_df)
 
             # Count injections per scenario and trade type
-            for scenario in ["CD_Drift", "CD_StaleValue", "CD_ClusterShock_3d"]:
+            for scenario in [ScenarioNames.DRIFT, ScenarioNames.STALE_VALUE, ScenarioNames.CLUSTER_SHOCK_3D]:
                 scenario_mask = injected_df[main_column.RECORD_TYPE] == scenario
                 if scenario_mask.any():
                     trade_types = injected_df.loc[scenario_mask, main_column.TRADE_TYPE].unique()
@@ -419,12 +419,12 @@ class TestCdiOutlierInjector(unittest.TestCase):
 
             # 3) All CDI injection scenarios should be present
             expected_scenarios = {
-                "CD_Drift",
-                "CD_StaleValue",
-                "CD_PointShock",
-                "CD_SignFlip",
-                "CD_ScaleError",
-                "CD_SuddenZero",
+                ScenarioNames.DRIFT,
+                ScenarioNames.STALE_VALUE,
+                ScenarioNames.POINT_SHOCK,
+                ScenarioNames.SIGN_FLIP,
+                ScenarioNames.SCALE_ERROR,
+                ScenarioNames.SUDDEN_ZERO,
             }
 
             injected_labels = set(
@@ -483,7 +483,7 @@ class TestCdiOutlierInjector(unittest.TestCase):
             injected_df = injector.inject(original_df)
 
             # Count injections per scenario and trade type
-            for scenario in ["CD_Drift", "CD_StaleValue", "CD_PointShock"]:
+            for scenario in [ScenarioNames.DRIFT, ScenarioNames.STALE_VALUE, ScenarioNames.POINT_SHOCK]:
                 scenario_mask = injected_df[main_column.RECORD_TYPE] == scenario
                 if scenario_mask.any():
                     trade_types = injected_df.loc[scenario_mask, main_column.TRADE_TYPE].unique()
