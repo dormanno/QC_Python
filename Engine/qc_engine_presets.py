@@ -129,10 +129,10 @@ preset_robust_univariate_cdi = QCEnginePreset(
 )
 
 methods_reactive_univariate = {
-    QCMethodDefinitions.ROBUST_Z: 0.30,    
+    QCMethodDefinitions.ROBUST_Z: 0.20,    
     QCMethodDefinitions.ECDF: 0.25,
     QCMethodDefinitions.HAMPEL: 0.25,
-    QCMethodDefinitions.ROLLING: 0.20
+    QCMethodDefinitions.ROLLING: 0.30
 }
 
 preset_reactive_univariate_cds = QCEnginePreset(
