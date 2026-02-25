@@ -18,6 +18,7 @@ from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 from Reports.roc_evaluation import evaluate_roc
 from Reports.upset_evaluation import evaluate_upset
+from Reports.performance_evaluation import evaluate_performance
 from Engine.qc_engine_presets import QCEnginePreset
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
@@ -104,6 +105,17 @@ def _run_credit_delta_report(
         threshold=0.95,
         title=report_title.replace("ROC Curves", "True Positive Intersections"),
         output_path=upset_png_path,
+    )
+
+    # 7. Generate Performance Comparison chart (Recall, Specificity, Precision, F1)
+    perf_filename = output_filename.replace("roc_curve", "performance")
+    perf_png_path = os.path.join(REPORT_OUTPUT_DIR, perf_filename)
+    evaluate_performance(
+        merged_df=merged,
+        score_columns=score_columns,
+        threshold=0.95,
+        title=report_title.replace("ROC Curves", "Performance Comparison"),
+        output_path=perf_png_path,
     )
 
     return roc_results
