@@ -212,3 +212,5 @@ __marimo__/
 .idea/modules.xml
 .idea/misc.xml
 .idea/.gitignore
+Reports/roc_curve_cdi.png
+Reports/roc_curve_cds.png
