@@ -175,8 +175,8 @@ class TestCdsOutlierInjector(unittest.TestCase):
 
         injected_df = injector.inject_cd_stale_value(original_df)
 
-        # Source row (first eligible date) should not be marked stale or modified
-        self.assertEqual(injected_df.loc[0, main_column.RECORD_TYPE], "OOS")
+        # Source row (first eligible date) should be protected and value unchanged
+        self.assertEqual(injected_df.loc[0, main_column.RECORD_TYPE], "StaleValue_Source")
         self.assertEqual(injected_df.loc[0, cds_column.CREDIT_DELTA_SINGLE], source_value)
 
         # Following stale_days rows should be stale and equal to source value

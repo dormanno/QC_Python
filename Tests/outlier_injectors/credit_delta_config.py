@@ -15,6 +15,7 @@ class ScenarioNames:
     """Injection scenario type names."""
     DRIFT = "Drift"
     STALE_VALUE = "StaleValue"
+    STALE_VALUE_SOURCE = "StaleValue_Source"
     CLUSTER_SHOCK_3D = "ClusterShock_3d"
     TRADE_TYPE_WIDE_SHOCK = "TradeTypeWide_Shock"
     POINT_SHOCK = "PointShock"

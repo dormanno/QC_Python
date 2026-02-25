@@ -74,6 +74,10 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             if scenario_name in active_scenarios:
                 df = method(df)
 
+        # Restore any source-protection labels back to OOS — these rows were never modified
+        source_mask = df[main_column.RECORD_TYPE] == ScenarioNames.STALE_VALUE_SOURCE
+        df.loc[source_mask, main_column.RECORD_TYPE] = "OOS"
+
         return df
     
     # ========================================================================
@@ -187,9 +191,11 @@ class CreditDeltaOutlierInjector(OutlierInjector):
             all_eligible_dates = sorted(eligible_trade[main_column.DATE].unique())
             target_dates = all_eligible_dates[1:stale_days + 1]
             
-            # Use first eligible date as source value; do not relabel source row as stale
-            stale_value = df[(df[main_column.TRADE] == selected_trade) & 
-                            (df[main_column.DATE] == all_eligible_dates[0])][self.feature_column].iloc[0]
+            # Use first eligible date as source value; protect it from subsequent scenarios
+            source_mask = (df[main_column.TRADE] == selected_trade) & \
+                          (df[main_column.DATE] == all_eligible_dates[0])
+            stale_value = df.loc[source_mask, self.feature_column].iloc[0]
+            df.loc[source_mask, main_column.RECORD_TYPE] = ScenarioNames.STALE_VALUE_SOURCE
             
             # Apply stale value to following N eligible dates
             for date in target_dates:

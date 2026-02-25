@@ -89,13 +89,14 @@ class OutlierInjector(ABC):
 
     def _eligible_mask(self, df: pd.DataFrame) -> pd.Series:
         """
-        Eligible rows are OOS (RecordType != "Train") and not already injected.
+        Eligible rows are OOS (RecordType == "OOS") and not already injected.
+        Everything that is not "OOS" or "Train" is considered an injected value.
         """
         if main_column.RECORD_TYPE not in df.columns:
             return pd.Series([True] * len(df), index=df.index)
 
         record_series = df[main_column.RECORD_TYPE].astype(str).fillna("")
-        return (record_series != "Train") & (~record_series.str.startswith("Injected_")) & (~record_series.str.startswith("CD_"))
+        return record_series == "OOS"
     
     def _compute_mad_stats(self, train_data: pd.DataFrame, features: List[str]):
         """
