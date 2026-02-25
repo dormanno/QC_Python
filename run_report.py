@@ -17,6 +17,7 @@ from qc_orchestrator import QCOrchestrator
 from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 from Reports.roc_evaluation import evaluate_roc
+from Reports.upset_evaluation import evaluate_upset
 from Engine.qc_engine_presets import QCEnginePreset
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
@@ -92,6 +93,17 @@ def _run_credit_delta_report(
         score_columns=score_columns,
         title=report_title,
         output_path=roc_png_path,
+    )
+
+    # 6. Generate UpSet plot of True Positive intersections
+    upset_filename = output_filename.replace("roc_curve", "upset_tp")
+    upset_png_path = os.path.join(REPORT_OUTPUT_DIR, upset_filename)
+    evaluate_upset(
+        merged_df=merged,
+        score_columns=score_columns,
+        threshold=0.95,
+        title=report_title.replace("ROC Curves", "True Positive Intersections"),
+        output_path=upset_png_path,
     )
 
     return roc_results
