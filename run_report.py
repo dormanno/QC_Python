@@ -19,6 +19,7 @@ from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfi
 from Reports.roc_evaluation import evaluate_roc
 from Reports.upset_evaluation import evaluate_upset
 from Reports.performance_evaluation import evaluate_performance
+from Reports.recall_heatmap import evaluate_recall_heatmap
 from Engine.qc_engine_presets import QCEnginePreset
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
@@ -116,6 +117,17 @@ def _run_credit_delta_report(
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Performance Comparison"),
         output_path=perf_png_path,
+    )
+
+    # 8. Generate Recall Heatmap (per injection type)
+    heatmap_filename = output_filename.replace("roc_curve", "recall_heatmap")
+    heatmap_png_path = os.path.join(REPORT_OUTPUT_DIR, heatmap_filename)
+    evaluate_recall_heatmap(
+        merged_df=merged,
+        score_columns=score_columns,
+        threshold=0.95,
+        title=report_title.replace("ROC Curves", "Recall Heatmap"),
+        output_path=heatmap_png_path,
     )
 
     return roc_results
