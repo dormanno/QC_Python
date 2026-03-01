@@ -10,6 +10,7 @@ import numpy as np
 from typing import Optional
 from column_names import pnl_column, main_column
 from .base import OutlierInjector
+from .pnl_config import PnLInjectorConfig, PnLScenarioNames
 
 
 class PnLOutlierInjector(OutlierInjector):
@@ -20,15 +21,19 @@ class PnLOutlierInjector(OutlierInjector):
     in PnL reporting systems.
     """
     
-    def __init__(self, severity: float = OutlierInjector.SEVERITY_MEDIUM, random_seed: int = 42):
+    def __init__(self, config: PnLInjectorConfig = None,
+                 severity: float = OutlierInjector.SEVERITY_MEDIUM, random_seed: int = 42):
         """
         Initialize the PnL injector.
         
         Args:
+            config: PnLInjectorConfig with per-scenario trade counts and scale factor.
+                    If None, the default preset is used.
             severity: Default severity multiplier (k) applied across all injection scenarios
             random_seed: Random seed for reproducibility
         """
         super().__init__(severity=severity, random_seed=random_seed)
+        self.config = config or PnLInjectorConfig.default_preset()
 
     def inject(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """
@@ -44,18 +49,20 @@ class PnLOutlierInjector(OutlierInjector):
         """
         df = dataset.copy()
         df = self._ensure_record_type(df)
+        _n = PnLScenarioNames
 
         # Apply all scenarios sequentially, each respecting eligible OOS rows
-        df = self.inject_pv_eod_spike_point(df, trade_count=10)
-        df = self.inject_pv_eod_step_change(df, trade_count=4)
-        df = self.inject_pv_eod_stale_copy(df, trade_count=4)
-        df = self.inject_pv_eod_scale_error(df, trade_count=5)
-        df = self.inject_pv_eod_sign_flip(df, trade_count=5)
-        df = self.inject_slice_credit_single_spike(df, trade_count=10)
-        df = self.inject_slice_credit_single_stale(df, trade_count=4)
-        df = self.inject_slice_reallocation_bug(df, trade_count=10)
-        df = self.inject_total_pnl_identity_break(df, trade_count=5)
-        df = self.inject_cross_family_inconsistency(df, trade_count=5)
+        df = self.inject_pv_eod_spike_point(df, trade_count=self.config.get_trade_count(_n.PV_SPIKE))
+        df = self.inject_pv_eod_step_change(df, trade_count=self.config.get_trade_count(_n.PV_STEP))
+        df = self.inject_pv_eod_stale_copy(df, trade_count=self.config.get_trade_count(_n.PV_STALE))
+        df = self.inject_pv_eod_scale_error(df, scale_factor=self.config.scale_factor,
+                                            trade_count=self.config.get_trade_count(_n.PV_SCALE))
+        df = self.inject_pv_eod_sign_flip(df, trade_count=self.config.get_trade_count(_n.PV_SIGN_FLIP))
+        df = self.inject_slice_credit_single_spike(df, trade_count=self.config.get_trade_count(_n.SLICE_SPIKE))
+        df = self.inject_slice_credit_single_stale(df, trade_count=self.config.get_trade_count(_n.SLICE_STALE))
+        df = self.inject_slice_reallocation_bug(df, trade_count=self.config.get_trade_count(_n.REALLOCATION))
+        df = self.inject_total_pnl_identity_break(df, trade_count=self.config.get_trade_count(_n.IDENTITY_BREAK))
+        df = self.inject_cross_family_inconsistency(df, trade_count=self.config.get_trade_count(_n.CROSS_FAMILY))
 
         return df
     

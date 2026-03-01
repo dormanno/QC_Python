@@ -2,7 +2,10 @@
 Run QC pipeline with outlier injection and generate ROC evaluation report.
 
 Usage:
-    python run_report.py
+    python run_report.py          # run all reports (PnL + CDS + CDI)
+    python run_report.py pnl      # PnL only
+    python run_report.py cds      # Credit Delta Single only
+    python run_report.py cdi      # Credit Delta Index only
 """
 
 import os
@@ -10,10 +13,13 @@ import logging
 
 from Engine import qc_engine_presets
 from Engine.feature_normalizer import FeatureNormalizer
-from IO.input import CreditDeltaSingleInput, CreditDeltaIndexInput
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from IO.output import Output
-from column_names import cds_column, cdi_column, main_column, FeatureColumnSet
+from column_names import pnl_column, cds_column, cdi_column, main_column, FeatureColumnSet
 from qc_orchestrator import QCOrchestrator
+from Tests.outlier_injectors.base import OutlierInjector
+from Tests.outlier_injectors.pnl import PnLOutlierInjector
+from Tests.outlier_injectors.pnl_config import PnLInjectorConfig
 from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 from Reports.roc_evaluation import evaluate_roc
@@ -32,23 +38,23 @@ REPORT_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "Reports")
 # ------------------------------------
 
 
-def _run_credit_delta_report(
+def _run_report(
     input_file: str,
     input_handler,
     column_set: FeatureColumnSet,
     engine_preset: QCEnginePreset,
-    injector_config: CreditDeltaInjectorConfig,
+    injector: OutlierInjector,
     report_title: str,
     output_filename: str,
 ) -> dict:
-    """Generic Credit Delta report pipeline: load -> inject -> score -> ROC.
+    """Generic report pipeline: load -> inject -> score -> ROC + supplementary charts.
     
     Args:
         input_file: Name of input CSV file (in INPUT_DIRECTORY).
-        input_handler: Input handler instance (e.g., CreditDeltaSingleInput()).
-        column_set: Column set instance (e.g., cds_column).
+        input_handler: Input handler instance (e.g., PnLInput(), CreditDeltaSingleInput()).
+        column_set: Column set instance (e.g., pnl_column, cds_column).
         engine_preset: QCEnginePreset instance.
-        injector_config: CreditDeltaInjectorConfig instance.
+        injector: Pre-configured OutlierInjector subclass instance.
         report_title: Title for the ROC curve plot.
         output_filename: Output PNG filename (saved in REPORT_OUTPUT_DIR).
     
@@ -64,7 +70,6 @@ def _run_credit_delta_report(
     logger.info(f"Loaded {len(full_data_set)} rows from {input_file}")
 
     # 2. Inject outliers
-    injector = CreditDeltaOutlierInjector(config=injector_config, severity=INJECTION_SEVERITY)
     full_data_set = injector.inject(full_data_set)
 
     injected_count = (full_data_set[main_column.RECORD_TYPE] != "OOS").sum() - \
@@ -133,18 +138,41 @@ def _run_credit_delta_report(
     return roc_results
 
 
+def run_pnl_report():
+    """Run full PnL pipeline: load -> inject -> score -> ROC report."""
+    logger.info("=" * 80)
+    logger.info("Starting PnL Report")
+    logger.info("=" * 80)
+
+    config = PnLInjectorConfig.default_preset()
+    injector = PnLOutlierInjector(config=config, severity=INJECTION_SEVERITY)
+
+    return _run_report(
+        input_file="PnL_Input_Train-OOS.csv",
+        input_handler=PnLInput(),
+        column_set=pnl_column,
+        engine_preset=qc_engine_presets.preset_temporal_multivariate_pnl,
+        injector=injector,
+        report_title="ROC Curves — PnL",
+        output_filename="roc_curve_pnl.png",
+    )
+
+
 def run_cds_report():
     """Run full CDS pipeline: load -> inject -> score -> ROC report."""
     logger.info("=" * 80)
     logger.info("Starting Credit Delta Single (CDS) Report")
     logger.info("=" * 80)
     
-    return _run_credit_delta_report(
+    config = CreditDeltaInjectorConfig.cds_preset()
+    injector = CreditDeltaOutlierInjector(config=config, severity=INJECTION_SEVERITY)
+
+    return _run_report(
         input_file="CreditDeltaSingle_Input.csv",
         input_handler=CreditDeltaSingleInput(),
         column_set=cds_column,
         engine_preset=qc_engine_presets.preset_reactive_univariate_cds,
-        injector_config=CreditDeltaInjectorConfig.cds_preset(),
+        injector=injector,
         report_title="ROC Curves — Credit Delta Single (CDS)",
         output_filename="roc_curve_cds.png",
     )
@@ -156,12 +184,15 @@ def run_cdi_report():
     logger.info("Starting Credit Delta Index (CDI) Report")
     logger.info("=" * 80)
     
-    return _run_credit_delta_report(
+    config = CreditDeltaInjectorConfig.credit_delta_index_preset()
+    injector = CreditDeltaOutlierInjector(config=config, severity=INJECTION_SEVERITY)
+
+    return _run_report(
         input_file="CreditDeltaIndex_Input_Train-OOS.csv",
         input_handler=CreditDeltaIndexInput(),
         column_set=cdi_column,
         engine_preset=qc_engine_presets.preset_robust_univariate_cdi,
-        injector_config=CreditDeltaInjectorConfig.credit_delta_index_preset(),
+        injector=injector,
         report_title="ROC Curves — Credit Delta Index (CDI)",
         output_filename="roc_curve_cdi.png",
     )
@@ -170,27 +201,37 @@ def run_cdi_report():
 if __name__ == "__main__":
     import sys
     
-    # Default: run both reports
-    reports_to_run = ["cds", "cdi"]
+    # Default: run all three reports
+    reports_to_run = ["pnl", "cds", "cdi"]
     
     # Check for command-line argument to run specific report
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
-        if arg in ["cds", "single"]:
+        if arg in ["pnl", "profit"]:
+            reports_to_run = ["pnl"]
+        elif arg in ["cds", "single"]:
             reports_to_run = ["cds"]
         elif arg in ["cdi", "index"]:
             reports_to_run = ["cdi"]
         elif arg in ["both", "all"]:
-            reports_to_run = ["cds", "cdi"]
+            reports_to_run = ["pnl", "cds", "cdi"]
         else:
-            print(f"Usage: python run_report.py [cds|cdi|both]")
+            print(f"Usage: python run_report.py [pnl|cds|cdi|all]")
+            print(f"  pnl/profit - Run PnL report only")
             print(f"  cds/single - Run Credit Delta Single report only")
             print(f"  cdi/index  - Run Credit Delta Index report only")
-            print(f"  both/all   - Run both reports (default)")
+            print(f"  all        - Run all reports (default)")
             sys.exit(1)
     
     results = {}
     
+    if "pnl" in reports_to_run:
+        try:
+            results["pnl"] = run_pnl_report()
+            logger.info("PnL report completed successfully\n")
+        except Exception as e:
+            logger.error(f"PnL report failed: {e}", exc_info=True)
+
     if "cds" in reports_to_run:
         try:
             results["cds"] = run_cds_report()

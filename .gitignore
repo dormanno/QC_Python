@@ -220,3 +220,7 @@ Reports/performance_cdi.png
 Reports/performance_cds.png
 Reports/recall_heatmap_cdi.png
 Reports/recall_heatmap_cds.png
+Reports/performance_pnl.png
+Reports/recall_heatmap_pnl.png
+Reports/roc_curve_pnl.png
+Reports/upset_tp_pnl.png

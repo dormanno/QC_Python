@@ -13,6 +13,7 @@ from IO.output import Output
 from column_names import pnl_column, cds_column, cdi_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Tests.outlier_injectors import PnLOutlierInjector
+from Tests.outlier_injectors.pnl_config import PnLInjectorConfig
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -132,12 +133,13 @@ class TestQCOrchestrator(unittest.TestCase):
 
     def test_QC_PnL_with_injections(self):
         """Test QC for PnL data with outlier injections."""
+        config = PnLInjectorConfig.default_preset()
         self._run_qc_test(
             "PnL_Input_Train-OOS.csv",
             PnLInput(),
             pnl_column,
             qc_engine_presets.preset_temporal_multivariate_pnl,
-            injector=PnLOutlierInjector(severity=INJECTION_SEVERITY),
+            injector=PnLOutlierInjector(config=config, severity=INJECTION_SEVERITY),
             inject=True)
     
     def test_QC_CreditDeltaSingle(self):
