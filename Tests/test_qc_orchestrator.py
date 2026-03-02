@@ -6,7 +6,7 @@ import shutil
 from Engine import qc_engine_presets
 from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
-from qc_orchestrator import QCOrchestrator
+from QC_Orchestrator import QCOrchestrator
 from Engine.feature_normalizer import FeatureNormalizer
 from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
 from IO.output import Output
@@ -42,7 +42,7 @@ INJECTION_SEVERITY = SEVERITY_MEDIUM
 
 class TestQCOrchestrator(unittest.TestCase):
     
-    def _run_qc_test(self, original_input_file, input_handler, columnSet, engine_preset, injector=None, inject=False):
+    def _run_qc_test(self, original_input_file, input_handler, columnSet, engine_preset, injector=None, inject=False, keep_family_scores=False):
         """Helper method to run QC test with specified column configuration and input file.
         
         Args:            
@@ -51,6 +51,7 @@ class TestQCOrchestrator(unittest.TestCase):
             columnSet: Column set instance
             engine_preset: QCEnginePreset instance
             injector: Optional OutlierInjector subclass instance to manipulate data before QC
+            keep_family_scores: If True, include family-specific scores in output
         """          
         
         # Create a temporary directory for the test
@@ -81,13 +82,14 @@ class TestQCOrchestrator(unittest.TestCase):
                 orchestrator = QCOrchestrator(
                     normalizer=normalizer,
                     engine_preset=engine_preset,
-                    split_identifier=main_column.TRADE_TYPE
+                    split_identifier=main_column.TRADE_TYPE,
+                    keep_family_scores=keep_family_scores
                 )
                 oos_scores = orchestrator.run(full_data_set)
                 
                 # Export results to file
                 output_handler = Output()
-                score_columns = engine_preset.get_score_columns()
+                score_columns = engine_preset.get_score_columns(include_family_scores=keep_family_scores)
                 output_path = output_handler.export_full_dataset(
                     full_data_set=full_data_set,
                     oos_scores=oos_scores,
@@ -111,8 +113,8 @@ class TestQCOrchestrator(unittest.TestCase):
             self.assertEqual(len(output_df), input_rows, f"Output rows {len(output_df)} != input rows {input_rows}")
 
             # 5. Output file should have original columns plus engineered and QC score columns
-            # Get actual score columns from the preset
-            actual_score_cols_count = len(engine_preset.get_score_columns())
+            # Get actual score columns from the preset (includes family scores if enabled)
+            actual_score_cols_count = len(engine_preset.get_score_columns(include_family_scores=keep_family_scores))
             expected_cols = input_cols + columnSet.ENGINEERED_FEATURES.__len__() + actual_score_cols_count
             self.assertEqual(len(output_df.columns), expected_cols, f"Output columns {len(output_df.columns)} != expected {expected_cols}")
 
@@ -129,7 +131,8 @@ class TestQCOrchestrator(unittest.TestCase):
             #"PnL_Input_Injected.csv",
             PnLInput(), 
             pnl_column, 
-            qc_engine_presets.preset_temporal_multivariate_pnl)
+            qc_engine_presets.preset_temporal_multivariate_pnl,
+            keep_family_scores=True)
 
     def test_QC_PnL_with_injections(self):
         """Test QC for PnL data with outlier injections."""
@@ -140,7 +143,8 @@ class TestQCOrchestrator(unittest.TestCase):
             pnl_column,
             qc_engine_presets.preset_temporal_multivariate_pnl,
             injector=PnLOutlierInjector(config=config, severity=INJECTION_SEVERITY),
-            inject=True)
+            inject=True,
+            keep_family_scores=True)
     
     def test_QC_CreditDeltaSingle(self):
         """Test QC for Credit Delta Single data."""        

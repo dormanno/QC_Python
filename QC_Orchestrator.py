@@ -22,7 +22,8 @@ class QCOrchestrator:
     def __init__(self, 
                  normalizer: FeatureNormalizer,
                  engine_preset: QCEnginePreset,
-                 split_identifier: Optional[str] = None):
+                 split_identifier: Optional[str] = None,
+                 keep_family_scores: bool = False):
         """Initialize the orchestrator with normalizer and engine preset.
         
         Args:
@@ -32,10 +33,13 @@ class QCOrchestrator:
             split_identifier (Optional[str]): Column name to split data by before
                 training/scoring. If provided, separate QC engines are built and
                 fitted per unique value in this column (e.g. TradeType).
+            keep_family_scores (bool): If True, include family-specific per-method
+                and aggregated scores in output alongside combined scores.
         """
         self.normalizer = normalizer
         self.engine_preset = engine_preset
         self.split_identifier = split_identifier
+        self.keep_family_scores = keep_family_scores
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
         """Split data into train/test sets based on date cutoff.
@@ -165,7 +169,7 @@ class QCOrchestrator:
         return engines
 
     def _score_and_collect(self, family_engines: Dict[str, QCEngine],
-                           day_data: pd.DataFrame, date) -> pd.DataFrame:
+                           day_data: pd.DataFrame, date, keep_family_scores: bool = False) -> pd.DataFrame:
         """Score a day subset with all family engines and combine via weighted noisy-OR.
         
         For each feature family, scores are computed using the family's dedicated engine.
@@ -177,9 +181,11 @@ class QCOrchestrator:
             family_engines (Dict[str, QCEngine]): Engines keyed by family name.
             day_data (pd.DataFrame): Normalized data for one day (or day+group subset).
             date: Date value for the current day.
+            keep_family_scores (bool): If True, include family-specific scores in output.
         
         Returns:
             pd.DataFrame: Concatenated trade IDs, date, method scores, aggregated score, and flag.
+                If keep_family_scores=True, also includes family-prefixed scores.
         """
         families = self.engine_preset.qc_feature_families
         
@@ -215,13 +221,34 @@ class QCOrchestrator:
         first_engine = family_engines[families[0].name]
         qc_flag = first_engine.aggregator.map_to_flag(combined_agg, simpleMode=True).to_frame()
         
-        return pd.concat([
+        # Build output columns
+        output_frames = [
             day_data[[main_column.TRADE]].reset_index(drop=True),
-            pd.Series([date] * len(day_data), name=main_column.DATE),
+            pd.Series([date] * len(day_data), name=main_column.DATE)
+        ]
+        
+        # Include family-specific scores if requested
+        if keep_family_scores:
+            for idx, (weight, day_scores) in enumerate(family_method_scores):
+                family = families[idx]
+                # Prefix method score columns with family name
+                prefixed_scores = day_scores.copy()
+                prefixed_scores.columns = [f"{family.name}_{col}" for col in day_scores.columns]
+                output_frames.append(prefixed_scores.reset_index(drop=True))
+            
+            for idx, (weight, agg) in enumerate(family_agg_scores):
+                family = families[idx]
+                family_agg_col = pd.Series(agg.values, name=f"{family.name}_AggScore")
+                output_frames.append(family_agg_col.reset_index(drop=True))
+        
+        # Add combined scores
+        output_frames.extend([
             combined_method_scores.reset_index(drop=True),
             combined_agg.reset_index(drop=True),
-            qc_flag.reset_index(drop=True),
-        ], axis=1)
+            qc_flag.reset_index(drop=True)
+        ])
+        
+        return pd.concat(output_frames, axis=1)
 
     def run(self, full_data_set: pd.DataFrame) -> pd.DataFrame:
         """Run the complete QC orchestration pipeline.
@@ -266,7 +293,7 @@ class QCOrchestrator:
 
             if self.split_identifier is None:
                 # Score entire day with all family engines
-                out = self._score_and_collect(engines[None], day, d)
+                out = self._score_and_collect(engines[None], day, d, self.keep_family_scores)
                 results.append(out)
                 for fe in engines[None].values():
                     fe.update_stateful_methods(day)
@@ -281,7 +308,7 @@ class QCOrchestrator:
                         )
                         continue
                     
-                    out = self._score_and_collect(engines[sv], group_df, d)
+                    out = self._score_and_collect(engines[sv], group_df, d, self.keep_family_scores)
                     group_results.append(out)
                     for fe in engines[sv].values():
                         fe.update_stateful_methods(group_df)

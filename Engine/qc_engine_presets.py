@@ -83,15 +83,36 @@ class QCEnginePreset:
                     result.append(f)
         return result
 
-    def get_score_columns(self) -> List[str]:
+    def get_score_columns(self, include_family_scores: bool = False) -> List[str]:
         """Get list of all score columns that engines built from this preset will generate.
+
+        Args:
+            include_family_scores: If True, include family-specific per-method and aggregated scores.
 
         Returns:
             List[str]: Score column names including individual method scores,
-                      aggregated score, and QC flag.
+                      aggregated score, and QC flag. If include_family_scores=True,
+                      also includes family-prefixed scores.
         """
+        result = []
+        
+        # Add family-specific scores if requested
+        if include_family_scores:
+            method_score_names = [method_def.score_name for method_def in self.methods_config.keys()]
+            for family in self.qc_feature_families:
+                # Per-method scores for this family
+                for score_name in method_score_names:
+                    result.append(f"{family.name}_{score_name}")
+                # Aggregated score for this family
+                result.append(f"{family.name}_AggScore")
+        
+        # Add combined scores
         method_score_cols = [method_def.score_name for method_def in self.methods_config.keys()]
-        return method_score_cols + [qc_column.AGGREGATED_SCORE, qc_column.QC_FLAG]
+        result.extend(method_score_cols)
+        result.append(qc_column.AGGREGATED_SCORE)
+        result.append(qc_column.QC_FLAG)
+        
+        return result
 
 method_config_temporal_multivariate = {
     QCMethodDefinitions.ISOLATION_FOREST: 0.25,
