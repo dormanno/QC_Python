@@ -6,11 +6,13 @@ import shutil
 from Engine import qc_engine_presets
 from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
+from Tests.outlier_injectors.pv import PVOutlierInjector
+from Tests.outlier_injectors.pv_config import PVInjectorConfig
 from QC_Orchestrator import QCOrchestrator
 from Engine.feature_normalizer import FeatureNormalizer
-from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput
 from IO.output import Output
-from column_names import pnl_column, cds_column, cdi_column, main_column
+from column_names import pnl_column, cds_column, cdi_column, pv_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Tests.outlier_injectors import PnLOutlierInjector
 from Tests.outlier_injectors.pnl_config import PnLInjectorConfig
@@ -182,6 +184,25 @@ class TestQCOrchestrator(unittest.TestCase):
             cdi_column,
             qc_engine_presets.preset_robust_univariate_cdi,
             injector=CreditDeltaOutlierInjector(config=config, severity=INJECTION_SEVERITY),
+            inject=True)
+
+    def test_QC_PV(self):
+        """Test QC for PV (Present Value) data."""
+        self._run_qc_test(
+            "PV_Train-OOS.csv",
+            PVInput(),
+            pv_column,
+            qc_engine_presets.preset_reactive_univariate_pv)
+
+    def test_QC_PV_with_injections(self):
+        """Test QC for PV (Present Value) data with outlier injections."""
+        config = PVInjectorConfig.pv_preset()
+        self._run_qc_test(
+            "PV_Train-OOS.csv",
+            PVInput(),
+            pv_column,
+            qc_engine_presets.preset_reactive_univariate_pv,
+            injector=PVOutlierInjector(config=config, severity=INJECTION_SEVERITY),
             inject=True)
 
 if __name__ == '__main__':

@@ -1,0 +1,626 @@
+"""
+PV (Present Value) outlier injector implementing 8 data quality scenarios.
+
+Implements 8 data quality issue scenarios for PV datasets (Start_PV and End_PV).
+Both features are injected in parallel with identical outliers.
+Based on Credit Delta Single injection patterns.
+"""
+
+import pandas as pd
+import numpy as np
+from column_names import main_column
+from .base import OutlierInjector
+from .pv_config import PVInjectorConfig, ScenarioNames
+
+
+class PVOutlierInjector(OutlierInjector):
+    """
+    PV outlier injector implementing 8 data quality scenarios.
+    
+    Injects identical outliers into both Start_PV and End_PV features in parallel,
+    implementing 8 scenario types adapted from Credit Delta Single patterns.
+    """
+    
+    def __init__(self, config: PVInjectorConfig, severity: float = OutlierInjector.SEVERITY_MEDIUM,
+                 random_seed: int = 42):
+        """
+        Initialize the PV injector with configuration.
+        
+        Args:
+            config: Configuration object containing all numerical parameters
+            severity: Default severity multiplier (k) applied across all injection scenarios
+            random_seed: Random seed for reproducibility
+        """
+        super().__init__(severity=severity, random_seed=random_seed)
+        self.config = config
+        self.start_pv_column = config.start_pv_column
+        self.end_pv_column = config.end_pv_column
+        self.pv_features = [self.start_pv_column, self.end_pv_column]
+    
+    def inject(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject outliers into the dataset.
+        
+        Applies all 8 scenarios sequentially to both Start_PV and End_PV,
+        each respecting eligible OOS rows.
+        
+        Args:
+            dataset: The dataset to inject outliers into
+            
+        Returns:
+            The modified dataset with outliers injected
+        """
+        df = dataset.copy()
+        df = self._ensure_record_type(df)
+
+        # Determine which scenarios have at least one non-zero trade type entry in config
+        active_scenarios = {
+            scenario
+            for (scenario, _), count in self.config.trade_type_counts.items()
+            if count > 0
+        }
+
+        # Apply configured scenarios sequentially
+        scenario_methods = [
+            (ScenarioNames.DRIFT,               self.inject_pv_drift),
+            (ScenarioNames.STALE_VALUE,          self.inject_pv_stale_value),
+            (ScenarioNames.CLUSTER_SHOCK_3D,     self.inject_pv_cluster_shock_3d),
+            (ScenarioNames.TRADE_TYPE_WIDE_SHOCK, self.inject_pv_trade_type_wide_shock),
+            (ScenarioNames.POINT_SHOCK,          self.inject_pv_point_shock),
+            (ScenarioNames.SIGN_FLIP,            self.inject_pv_sign_flip),
+            (ScenarioNames.SCALE_ERROR,          self.inject_pv_scale_error),
+            (ScenarioNames.SUDDEN_ZERO,          self.inject_pv_sudden_zero),
+        ]
+
+        for scenario_name, method in scenario_methods:
+            if scenario_name in active_scenarios:
+                df = method(df)
+
+        # Restore any source-protection labels back to OOS — these rows were never modified
+        source_mask = df[main_column.RECORD_TYPE] == ScenarioNames.STALE_VALUE_SOURCE
+        df.loc[source_mask, main_column.RECORD_TYPE] = "OOS"
+
+        return df
+    
+    # ========================================================================
+    # Scenario 1: PV_Drift
+    # ========================================================================
+    def inject_pv_drift(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject linear drift in both PV features over last T consecutive days.
+        
+        Per trade type spec: select 1 trade, apply drift over T days = T records.
+        Formula: PV'(i) = PV(i) + (i/(T-1))·k·Scale_trade for i=0..T-1
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Gradual model degradation, stale curve, wrong rates assumption.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with drift injected
+        """
+        df = dataset.copy()
+        
+        if not self._mad_stats:
+            train_data = self._get_train_data(df)
+            self._compute_mad_stats(train_data, self.pv_features)
+        
+        drift_days_by_type = self.config.drift_days_by_type
+        eligible_mask = self._eligible_mask(df)
+        
+        # Apply to exactly 1 trade per trade type (spec says "1 trade" per type)
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            T = drift_days_by_type.get(trade_type, 0)
+            if T == 0:
+                continue
+            
+            # Get all trades of this type and their eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select 1 random trade of this type
+            selected_trade = np.random.choice(type_trades)
+            
+            trade_data = df[df[main_column.TRADE] == selected_trade].sort_values(main_column.DATE)
+            eligible_trade = trade_data[eligible_mask[trade_data.index]]
+            
+            if len(eligible_trade) < T:
+                continue  # Not enough days for this trade
+            
+            # Get last T dates for this trade
+            all_eligible_dates = sorted(eligible_trade[main_column.DATE].unique())
+            last_dates = all_eligible_dates[-T:]
+            
+            # Get MAD for this trade type (use Start_PV as reference)
+            mad = self._get_mad(trade_type, self.start_pv_column)
+            sign = self._random_sign()
+            
+            # Apply drift formula to both features: PV'(i) = PV(i) + (i/(T-1))·k·MAD for i=0..T-1
+            for i, date in enumerate(last_dates):
+                mask = (df[main_column.TRADE] == selected_trade) & (df[main_column.DATE] == date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    # Linear scaling from 0 to 1 over T days
+                    scale_factor = i / (T - 1) if T > 1 else 0
+                    drift = sign * scale_factor * self.severity * mad
+                    
+                    # Apply to both PV features
+                    df.loc[mask, self.start_pv_column] += drift
+                    df.loc[mask, self.end_pv_column] += drift
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.DRIFT
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 2: PV_StaleValue
+    # ========================================================================
+    def inject_pv_stale_value(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject stale/stuck values over first N consecutive days per trade type.
+        
+        Per trade type spec: select 1 trade, copy PV(t-1) for N consecutive days = N records.
+        Formula: PV'(t) = PV(t-1) (copy previous day's value)
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Valuations not updating, feed stuck, source frozen.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with stale values
+        """
+        df = dataset.copy()
+        eligible_mask = self._eligible_mask(df)
+        stale_days = self.config.stale_days
+        
+        # Apply to exactly 1 trade per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select 1 random trade of this type
+            selected_trade = np.random.choice(type_trades)
+            
+            trade_data = df[df[main_column.TRADE] == selected_trade].sort_values(main_column.DATE)
+            eligible_trade = trade_data[eligible_mask[trade_data.index]]
+            
+            if len(eligible_trade) < stale_days + 1:
+                continue  # Need at least stale_days + 1 to have a value to copy
+            
+            # Get stale source date plus target dates
+            all_eligible_dates = sorted(eligible_trade[main_column.DATE].unique())
+            target_dates = all_eligible_dates[1:stale_days + 1]
+            
+            # Use first eligible date as source value; protect it from subsequent scenarios
+            source_mask = (df[main_column.TRADE] == selected_trade) & \
+                          (df[main_column.DATE] == all_eligible_dates[0])
+            stale_start_pv = df.loc[source_mask, self.start_pv_column].iloc[0]
+            stale_end_pv = df.loc[source_mask, self.end_pv_column].iloc[0]
+            df.loc[source_mask, main_column.RECORD_TYPE] = ScenarioNames.STALE_VALUE_SOURCE
+            
+            # Apply stale values to following N eligible dates (both features)
+            for date in target_dates:
+                mask = (df[main_column.TRADE] == selected_trade) & (df[main_column.DATE] == date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] = stale_start_pv
+                    df.loc[mask, self.end_pv_column] = stale_end_pv
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.STALE_VALUE
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 3: PV_ClusterShock_3d
+    # ========================================================================
+    def inject_pv_cluster_shock_3d(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject 3-day cluster shock to both PV features.
+        
+        Per trade type spec: select 1 trade, apply shock over 3 consecutive days = 3 records.
+        Formula: PV'(t) = PV(t) + k·MAD_tt for 3 consecutive days
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Market event/shock spanning multiple days, rate spike, credit event.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with cluster shocks
+        """
+        df = dataset.copy()
+        
+        if not self._mad_stats:
+            train_data = self._get_train_data(df)
+            self._compute_mad_stats(train_data, self.pv_features)
+        
+        eligible_mask = self._eligible_mask(df)
+        shock_days = 3
+        
+        # Apply to exactly 1 trade per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select 1 random trade of this type
+            selected_trade = np.random.choice(type_trades)
+            
+            trade_data = df[df[main_column.TRADE] == selected_trade].sort_values(main_column.DATE)
+            eligible_trade = trade_data[eligible_mask[trade_data.index]]
+            
+            if len(eligible_trade) < shock_days:
+                continue
+            
+            # Select 3 consecutive random dates from eligible dates
+            all_eligible_dates = sorted(eligible_trade[main_column.DATE].unique())
+            if len(all_eligible_dates) < shock_days:
+                continue
+            
+            start_idx = np.random.randint(0, len(all_eligible_dates) - shock_days + 1)
+            shock_dates = all_eligible_dates[start_idx:start_idx + shock_days]
+            
+            # Get MAD for this trade type (use Start_PV as reference)
+            mad = self._get_mad(trade_type, self.start_pv_column)
+            sign = self._random_sign()
+            shock = sign * self.severity * mad
+            
+            # Apply shock to 3 consecutive dates (both features)
+            for date in shock_dates:
+                mask = (df[main_column.TRADE] == selected_trade) & (df[main_column.DATE] == date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] += shock
+                    df.loc[mask, self.end_pv_column] += shock
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.CLUSTER_SHOCK_3D
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 4: PV_TradeTypeWide_Shock
+    # ========================================================================
+    def inject_pv_trade_type_wide_shock(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject systemic shock on first OOS date across % of each trade type.
+        
+        Per trade type spec percentage: count trades on FIRST OOS date (including all OOS),
+        but only inject on rows that haven't been injected yet. Select backup trades if
+        needed to hit the target count.
+        Formula: PV' = PV + k·MAD_tt for selected trades on first OOS date
+        Applied identically to both Start_PV and End_PV.
+        
+        Example: If 100 Basis trades exist on first OOS date, 50% = 50 trades, 1 day each = 50 records.
+        
+        Real-world: Market-wide repricing event affecting risk category, credit curve shift.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with trade-type-wide shocks
+        """
+        df = dataset.copy()
+        
+        if not self._mad_stats:
+            train_data = self._get_train_data(df)
+            self._compute_mad_stats(train_data, self.pv_features)
+        
+        eligible_mask = self._eligible_mask(df)
+        trade_type_counts = self.config.trade_type_counts
+        
+        # Find first OOS date (include both original OOS and already-injected rows)
+        oos_mask = df[main_column.RECORD_TYPE] != "Train"
+        oos_dates = sorted(df[oos_mask][main_column.DATE].unique())
+        if len(oos_dates) == 0:
+            return df
+        
+        first_oos_date = oos_dates[0]
+        
+        # For each trade type, select percentage of trades present on first OOS date
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            pct = trade_type_counts.get((ScenarioNames.TRADE_TYPE_WIDE_SHOCK, trade_type), 0)
+            if pct == 0:
+                continue
+            
+            # Get trades of this type on the first OOS date (including already-injected, for counting)
+            first_date_mask = (df[main_column.DATE] == first_oos_date) & \
+                            (df[main_column.TRADE_TYPE] == trade_type) & \
+                            oos_mask
+            
+            trades_on_first_date = df[first_date_mask][main_column.TRADE].unique()
+            if len(trades_on_first_date) == 0:
+                continue
+            
+            # Select percentage of these trades (target count)
+            target_count = max(1, int(len(trades_on_first_date) * pct))
+            
+            # Shuffle trades to randomize selection
+            shuffled_trades = np.random.permutation(trades_on_first_date)
+            
+            # Get MAD for this trade type (use Start_PV as reference)
+            mad = self._get_mad(trade_type, self.start_pv_column)
+            sign = self._random_sign()
+            shock = sign * self.severity * mad
+            
+            # Inject until we reach target_count, using backup trades if needed
+            injected_count = 0
+            for trade_id in shuffled_trades:
+                if injected_count >= target_count:
+                    break
+                
+                # Try to inject on first OOS date
+                mask = (df[main_column.TRADE] == trade_id) & (df[main_column.DATE] == first_oos_date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] += shock
+                    df.loc[mask, self.end_pv_column] += shock
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.TRADE_TYPE_WIDE_SHOCK
+                    injected_count += 1
+                else:
+                    # If first OOS date row is already injected, try any eligible date for this trade
+                    trade_mask = (df[main_column.TRADE] == trade_id) & eligible_mask
+                    if trade_mask.sum() > 0:
+                        # Find first eligible row for this trade and inject
+                        trade_rows = df[trade_mask].iloc[:1]
+                        idx = trade_rows.index[0]
+                        df.loc[idx, self.start_pv_column] += shock
+                        df.loc[idx, self.end_pv_column] += shock
+                        df.loc[idx, main_column.RECORD_TYPE] = ScenarioNames.TRADE_TYPE_WIDE_SHOCK
+                        injected_count += 1
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 5: PV_PointShock
+    # ========================================================================
+    def inject_pv_point_shock(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject isolated 1-day shocks for specified trades per type.
+        
+        Per trade type spec: Basis:3, Basket:1, Index:2, SingleName:3, Tranche:1 trades on random day.
+        Formula: PV' = PV + k·MAD_tt
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: One-off bad market data snapshot, transient calc glitch, data feed artifact.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with point shocks
+        """
+        df = dataset.copy()
+        
+        if not self._mad_stats:
+            train_data = self._get_train_data(df)
+            self._compute_mad_stats(train_data, self.pv_features)
+        
+        eligible_mask = self._eligible_mask(df)
+        trade_type_counts = self.config.trade_type_counts
+        
+        # Apply to specified number of trades per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            trade_count = int(trade_type_counts.get((ScenarioNames.POINT_SHOCK, trade_type), 0))
+            if trade_count == 0:
+                continue
+            
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select exactly N trades of this type
+            n_to_inject = min(trade_count, len(type_trades))
+            selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
+            
+            # Get MAD for this trade type (use Start_PV as reference)
+            mad = self._get_mad(trade_type, self.start_pv_column)
+            sign = self._random_sign()
+            shock = sign * self.severity * mad
+            
+            # Apply shock on 1 random day for each selected trade (both features)
+            for trade_id in selected_trades:
+                trade_data = df[(df[main_column.TRADE] == trade_id) & eligible_mask]
+                if len(trade_data) == 0:
+                    continue
+                
+                # Pick 1 random date for this trade
+                random_date = np.random.choice(trade_data[main_column.DATE].unique())
+                
+                mask = (df[main_column.TRADE] == trade_id) & (df[main_column.DATE] == random_date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] += shock
+                    df.loc[mask, self.end_pv_column] += shock
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.POINT_SHOCK
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 6: PV_SignFlip
+    # ========================================================================
+    def inject_pv_sign_flip(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject sign flip for specified trades per type on 1 random day.
+        
+        Per trade type spec: Basis:3, Basket:1, Index:2, SingleName:3, Tranche:1 trades.
+        Formula: PV' = -PV
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Sign convention inversion, wrong direction, mapping inversion bug.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with sign flips
+        """
+        df = dataset.copy()
+        eligible_mask = self._eligible_mask(df)
+        trade_type_counts = self.config.trade_type_counts
+        
+        # Apply to specified number of trades per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            trade_count = int(trade_type_counts.get((ScenarioNames.SIGN_FLIP, trade_type), 0))
+            if trade_count == 0:
+                continue
+            
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select exactly N trades of this type
+            n_to_inject = min(trade_count, len(type_trades))
+            selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
+            
+            # Apply sign flip on 1 random day for each selected trade (both features)
+            for trade_id in selected_trades:
+                trade_data = df[(df[main_column.TRADE] == trade_id) & eligible_mask]
+                if len(trade_data) == 0:
+                    continue
+                
+                # Pick 1 random date for this trade
+                random_date = np.random.choice(trade_data[main_column.DATE].unique())
+                
+                mask = (df[main_column.TRADE] == trade_id) & (df[main_column.DATE] == random_date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] *= -1
+                    df.loc[mask, self.end_pv_column] *= -1
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SIGN_FLIP
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 7: PV_ScaleError
+    # ========================================================================
+    def inject_pv_scale_error(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject scale/unit error for specified trades per type on 1 random day.
+        
+        Per trade type spec: Basis:3, Basket:1, Index:2, SingleName:3, Tranche:1 trades.
+        Trade-type specific scaling from config (e.g., 100× or 1000×),
+        randomly applied as ×scale or /scale.
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Unit/currency/notional scaling error, decimal placement bug.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with scale errors
+        """
+        df = dataset.copy()
+        eligible_mask = self._eligible_mask(df)
+        trade_type_counts = self.config.trade_type_counts
+        
+        # Apply to specified number of trades per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            trade_count = int(trade_type_counts.get((ScenarioNames.SCALE_ERROR, trade_type), 0))
+            if trade_count == 0:
+                continue
+            
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select exactly N trades of this type
+            n_to_inject = min(trade_count, len(type_trades))
+            selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
+            
+            # Determine scale factor from config for this trade type
+            base_scale = self.config.scale_factors_by_type.get(trade_type, 100.0)
+            
+            # Apply scale error on 1 random day for each selected trade (both features)
+            for trade_id in selected_trades:
+                trade_data = df[(df[main_column.TRADE] == trade_id) & eligible_mask]
+                if len(trade_data) == 0:
+                    continue
+                
+                # Pick 1 random date for this trade
+                random_date = np.random.choice(trade_data[main_column.DATE].unique())
+                
+                mask = (df[main_column.TRADE] == trade_id) & (df[main_column.DATE] == random_date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    # Randomly choose ×scale or /scale
+                    factor = base_scale if np.random.random() > 0.5 else 1.0 / base_scale
+                    df.loc[mask, self.start_pv_column] *= factor
+                    df.loc[mask, self.end_pv_column] *= factor
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SCALE_ERROR
+        
+        return df
+    
+    # ========================================================================
+    # Scenario 8: PV_SuddenZero
+    # ========================================================================
+    def inject_pv_sudden_zero(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        """
+        Inject sudden zero values for specified trades per type on 1 random day.
+        
+        Per trade type spec: Basis:3, Basket:1, Index:2, SingleName:3, Tranche:1 trades.
+        Formula: PV' = 0
+        Applied identically to both Start_PV and End_PV.
+        
+        Real-world: Valuation error, dead code path, null/missing value, convention inversion.
+        
+        Args:
+            dataset: Input dataset
+            
+        Returns:
+            Dataset with sudden zeros
+        """
+        df = dataset.copy()
+        eligible_mask = self._eligible_mask(df)
+        trade_type_counts = self.config.trade_type_counts
+        
+        # Apply to specified number of trades per trade type
+        for trade_type in df[main_column.TRADE_TYPE].unique():
+            trade_count = int(trade_type_counts.get((ScenarioNames.SUDDEN_ZERO, trade_type), 0))
+            if trade_count == 0:
+                continue
+            
+            # Get all trades of this type with eligible dates
+            type_trades = df[(df[main_column.TRADE_TYPE] == trade_type) & eligible_mask][main_column.TRADE].unique()
+            if len(type_trades) == 0:
+                continue
+            
+            # Select exactly N trades of this type
+            n_to_inject = min(trade_count, len(type_trades))
+            selected_trades = np.random.choice(type_trades, size=n_to_inject, replace=False)
+            
+            # Apply zero injection on 1 random day for each selected trade (both features)
+            for trade_id in selected_trades:
+                trade_data = df[(df[main_column.TRADE] == trade_id) & eligible_mask]
+                if len(trade_data) == 0:
+                    continue
+                
+                # Pick 1 random date for this trade
+                random_date = np.random.choice(trade_data[main_column.DATE].unique())
+                
+                mask = (df[main_column.TRADE] == trade_id) & (df[main_column.DATE] == random_date)
+                mask &= eligible_mask
+                
+                if mask.sum() > 0:
+                    df.loc[mask, self.start_pv_column] = 0.0
+                    df.loc[mask, self.end_pv_column] = 0.0
+                    df.loc[mask, main_column.RECORD_TYPE] = ScenarioNames.SUDDEN_ZERO
+        
+        return df

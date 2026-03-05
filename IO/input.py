@@ -2,7 +2,7 @@ from typing import Optional
 import logging
 
 import pandas as pd
-from column_names import main_column, pnl_column, cds_column, cdi_column
+from column_names import main_column, pnl_column, cds_column, cdi_column, pv_column
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,35 @@ class CreditDeltaIndexInput(Input):
         
         Returns:
             pd.DataFrame: DataFrame with engineered Credit Delta Index feature columns.
+        """
+        return df  # No additional processing for now
+
+
+class PVInput(Input):
+    """Handles reading and engineering PV-specific input data.
+    
+    Extends Input class with PV-specific column expectations and feature engineering.
+    """
+    
+    EXPECTED_COLS = [
+        main_column.TRADE, 
+        main_column.DATE,
+        main_column.TRADE_TYPE,
+        pv_column.START_PV,
+        pv_column.END_PV
+    ]
+    NUMERIC_COLS = pv_column.INPUT_FEATURES
+
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process PV data with feature engineering.
+        
+        Currently no additional features; placeholder for future extensions.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw PV data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with engineered PV feature columns.
         """
         return df  # No additional processing for now
 

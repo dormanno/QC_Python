@@ -85,6 +85,29 @@ class CreditDeltaIndexColumnSet(FeatureColumnSet):
         object.__setattr__(self, 'ENGINEERED_FEATURES', [])  # No engineered features for CreditDeltaIndex
 
 @dataclass(frozen=True)
+class PVColumnSet(FeatureColumnSet):
+    """PV (Present Value) related columns"""
+    START_PV: str = "Start_PV"
+    END_PV: str = "End_PV"
+
+    def __post_init__(self):
+        families = [
+            QCFeatureFamily(name="PV",
+                            features=(self.START_PV, self.END_PV),
+                            weight=1.0)
+        ]
+        object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)
+        object.__setattr__(self, 'QC_FEATURES', [
+                self.START_PV,
+                self.END_PV
+            ])
+        object.__setattr__(self, 'INPUT_FEATURES', [
+                self.START_PV,
+                self.END_PV
+            ])
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])  # No engineered features for PV
+
+@dataclass(frozen=True)
 class PnLColumnSet(FeatureColumnSet):
     """PnL-related columns"""
     START: str = "Start_PV"
@@ -195,3 +218,4 @@ pnl_column = PnLColumnSet()
 qc_column = QCColumnSet()
 cds_column = CreditDeltaSingleColumnSet()
 cdi_column = CreditDeltaIndexColumnSet()
+pv_column = PVColumnSet()

@@ -2,10 +2,11 @@
 Run QC pipeline with outlier injection and generate ROC evaluation report.
 
 Usage:
-    python run_report.py          # run all reports (PnL + CDS + CDI)
+    python run_report.py          # run all reports (PnL + CDS + CDI + PV)
     python run_report.py pnl      # PnL only
     python run_report.py cds      # Credit Delta Single only
     python run_report.py cdi      # Credit Delta Index only
+    python run_report.py pv       # Present Value only
 """
 
 import os
@@ -13,15 +14,17 @@ import logging
 
 from Engine import qc_engine_presets
 from Engine.feature_normalizer import FeatureNormalizer
-from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput
 from IO.output import Output
-from column_names import pnl_column, cds_column, cdi_column, main_column, FeatureColumnSet
-from qc_orchestrator import QCOrchestrator
+from column_names import pnl_column, cds_column, cdi_column, pv_column, main_column, FeatureColumnSet
+from QC_Orchestrator import QCOrchestrator
 from Tests.outlier_injectors.base import OutlierInjector
 from Tests.outlier_injectors.pnl import PnLOutlierInjector
 from Tests.outlier_injectors.pnl_config import PnLInjectorConfig
 from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
+from Tests.outlier_injectors.pv import PVOutlierInjector
+from Tests.outlier_injectors.pv_config import PVInjectorConfig
 from Reports.roc_evaluation import evaluate_roc
 from Reports.upset_evaluation import evaluate_upset
 from Reports.performance_evaluation import evaluate_performance
@@ -198,11 +201,31 @@ def run_cdi_report():
     )
 
 
+def run_pv_report():
+    """Run full PV pipeline: load -> inject -> score -> ROC report."""
+    logger.info("=" * 80)
+    logger.info("Starting PV (Present Value) Report")
+    logger.info("=" * 80)
+    
+    config = PVInjectorConfig.pv_preset()
+    injector = PVOutlierInjector(config=config, severity=INJECTION_SEVERITY)
+
+    return _run_report(
+        input_file="PV_Train-OOS.csv",
+        input_handler=PVInput(),
+        column_set=pv_column,
+        engine_preset=qc_engine_presets.preset_reactive_univariate_pv,
+        injector=injector,
+        report_title="ROC Curves — PV (Present Value)",
+        output_filename="roc_curve_pv.png",
+    )
+
+
 if __name__ == "__main__":
     import sys
     
-    # Default: run all three reports
-    reports_to_run = ["pnl", "cds", "cdi"]
+    # Default: run all four reports
+    reports_to_run = ["pnl", "cds", "cdi", "pv"]
     
     # Check for command-line argument to run specific report
     if len(sys.argv) > 1:
@@ -213,13 +236,16 @@ if __name__ == "__main__":
             reports_to_run = ["cds"]
         elif arg in ["cdi", "index"]:
             reports_to_run = ["cdi"]
+        elif arg in ["pv", "present"]:
+            reports_to_run = ["pv"]
         elif arg in ["both", "all"]:
-            reports_to_run = ["pnl", "cds", "cdi"]
+            reports_to_run = ["pnl", "cds", "cdi", "pv"]
         else:
-            print(f"Usage: python run_report.py [pnl|cds|cdi|all]")
+            print(f"Usage: python run_report.py [pnl|cds|cdi|pv|all]")
             print(f"  pnl/profit - Run PnL report only")
             print(f"  cds/single - Run Credit Delta Single report only")
             print(f"  cdi/index  - Run Credit Delta Index report only")
+            print(f"  pv/present - Run Present Value report only")
             print(f"  all        - Run all reports (default)")
             sys.exit(1)
     
@@ -245,6 +271,13 @@ if __name__ == "__main__":
             logger.info("CDI report completed successfully\n")
         except Exception as e:
             logger.error(f"CDI report failed: {e}", exc_info=True)
+    
+    if "pv" in reports_to_run:
+        try:
+            results["pv"] = run_pv_report()
+            logger.info("PV report completed successfully\n")
+        except Exception as e:
+            logger.error(f"PV report failed: {e}", exc_info=True)
     
     logger.info("=" * 80)
     logger.info("All reports completed")

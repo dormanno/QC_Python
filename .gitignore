@@ -224,3 +224,7 @@ Reports/performance_pnl.png
 Reports/recall_heatmap_pnl.png
 Reports/roc_curve_pnl.png
 Reports/upset_tp_pnl.png
+Reports/performance_pv.png
+Reports/recall_heatmap_pv.png
+Reports/roc_curve_pv.png
+Reports/upset_tp_pv.png

@@ -8,7 +8,7 @@ to instantiate QCEngine objects. Engines are built on-demand via build_engine().
 from dataclasses import dataclass
 from typing import List, Dict
 
-from column_names import pnl_column, cds_column, cdi_column, qc_column, QCFeatureFamily
+from column_names import pnl_column, cds_column, cdi_column, pv_column, qc_column, QCFeatureFamily
 from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
 from Engine.aggregator import ConsensusMode
 from Engine.qc_engine import QCEngine
@@ -159,6 +159,24 @@ methods_reactive_univariate = {
 preset_reactive_univariate_cds = QCEnginePreset(
     qc_feature_families=cds_column.QC_FEATURE_FAMILIES,
     methods_config=methods_reactive_univariate,
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE]
+)
+
+methods_reactive_univariate_pv = {
+    QCMethodDefinitions.ROBUST_Z: 0.25,    
+    QCMethodDefinitions.ECDF: 0.25,
+    QCMethodDefinitions.HAMPEL: 0.25,
+    QCMethodDefinitions.ROLLING: 0.25,
+    # QCMethodDefinitions.ISOLATION_FOREST: 0.15,
+    # QCMethodDefinitions.IQR: 0.10,    
+    # QCMethodDefinitions.LOF: 0.15
+}
+
+preset_reactive_univariate_pv = QCEnginePreset(
+    qc_feature_families=pv_column.QC_FEATURE_FAMILIES,
+    methods_config=methods_reactive_univariate_pv,
     roll_window=20,
     consensus=ConsensusMode.QUALIFIED_MAJORITY,
     filters=[QCMethodDefinitions.STALE_VALUE]

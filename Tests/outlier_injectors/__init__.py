@@ -1,7 +1,7 @@
 """
 Outlier injectors for generating synthetic data quality scenarios.
 
-Provides OutlierInjector base class and implementations for PnL and CDS injection.
+Provides OutlierInjector base class and implementations for PnL, CDS, and PV injection.
 """
 
 from .base import OutlierInjector
@@ -9,6 +9,8 @@ from .pnl import PnLOutlierInjector
 from .pnl_config import PnLInjectorConfig, PnLScenarioNames
 from .credit_delta import CreditDeltaOutlierInjector
 from .credit_delta_config import CreditDeltaInjectorConfig
+from .pv import PVOutlierInjector
+from .pv_config import PVInjectorConfig
 
 __all__ = [
     'OutlierInjector',
@@ -17,4 +19,6 @@ __all__ = [
     'PnLScenarioNames',
     'CreditDeltaOutlierInjector',
     'CreditDeltaInjectorConfig',
+    'PVOutlierInjector',
+    'PVInjectorConfig',
 ]
