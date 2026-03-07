@@ -3,11 +3,12 @@ import os
 import tempfile
 import shutil
 import pandas as pd
-from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput
-from column_names import main_column, cds_column, cdi_column, pv_column
-from Tests.outlier_injectors import PnLOutlierInjector, CreditDeltaOutlierInjector, PVOutlierInjector
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput, PnLSlicesInput
+from column_names import main_column, cds_column, cdi_column, pv_column, pnl_slices_column
+from Tests.outlier_injectors import PnLOutlierInjector, CreditDeltaOutlierInjector, PVOutlierInjector, PnLSlicesOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig, ScenarioNames as CDScenarioNames
 from Tests.outlier_injectors.pv_config import PVInjectorConfig, ScenarioNames as PVScenarioNames
+from Tests.outlier_injectors.pnl_slices_config import PnLSlicesInjectorConfig, ScenarioNames as PnLSlicesScenarioNames
 
 ORIGINAL_INPUT_DIRECTORY = r"C:\Users\dorma\Documents\UEK_Backup\Test"
 
@@ -861,6 +862,241 @@ class TestPVOutlierInjector(unittest.TestCase):
             self.assertTrue(os.path.exists(output_path), f"Output file not created: {output_path}")
 
             # Copy output to original directory for review
+            shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, output_name))
+
+
+class TestPnLSlicesOutlierInjector(unittest.TestCase):
+
+    def test_pnl_slices_stale_value_does_not_label_source_row(self):
+        """The source row used for stale propagation must remain unchanged and not relabeled."""
+        config = PnLSlicesInjectorConfig.pnl_slices_preset()
+        injector = PnLSlicesOutlierInjector(config=config, random_seed=42)
+
+        dates = pd.date_range("2025-01-01", periods=7, freq="D")
+        # Create original values for all 10 slice features
+        n = 7
+        source_values = {col: float((i + 1) * 100) for i, col in enumerate(config.slice_columns)}
+        original_values = {
+            col: [source_values[col]] + [source_values[col] + j * 10 for j in range(1, n)]
+            for col in config.slice_columns
+        }
+
+        data = {
+            main_column.RECORD_TYPE: ["OOS"] * n,
+            main_column.TRADE: ["T_BASIS_1"] * n,
+            main_column.BOOK: ["B1"] * n,
+            main_column.TRADE_TYPE: ["Basis"] * n,
+            main_column.DATE: dates,
+        }
+        for col in config.slice_columns:
+            data[col] = original_values[col]
+
+        original_df = pd.DataFrame(data)
+        injected_df = injector.inject_stale_value(original_df)
+
+        # Source row should be protected and values unchanged
+        self.assertEqual(injected_df.loc[0, main_column.RECORD_TYPE], "StaleValue_Source")
+        for col in config.slice_columns:
+            self.assertEqual(injected_df.loc[0, col], source_values[col])
+
+        # Following stale_days rows should be stale and equal to source values
+        stale_days = config.stale_days
+        stale_rows = injected_df.iloc[1:1 + stale_days]
+        self.assertTrue((stale_rows[main_column.RECORD_TYPE] == "StaleValue").all())
+        for col in config.slice_columns:
+            self.assertTrue((stale_rows[col] == source_values[col]).all())
+
+        # Remaining rows should stay OOS and unchanged
+        tail_rows = injected_df.iloc[1 + stale_days:]
+        self.assertTrue((tail_rows[main_column.RECORD_TYPE] == "OOS").all())
+        for col in config.slice_columns:
+            self.assertEqual(
+                tail_rows[col].tolist(),
+                original_values[col][1 + stale_days:]
+            )
+
+    def test_pnl_slices_all_features_injected_identically(self):
+        """Verify that all 10 slice features receive consistent outlier injections."""
+        config = PnLSlicesInjectorConfig.pnl_slices_preset()
+        injector = PnLSlicesOutlierInjector(config=config, random_seed=42)
+
+        dates = pd.date_range("2025-01-01", periods=50, freq="D")
+        data = {
+            main_column.RECORD_TYPE: ["OOS"] * 50,
+            main_column.TRADE: [f"T_BASIS_{i // 10}" for i in range(50)],
+            main_column.BOOK: ["B1"] * 50,
+            main_column.TRADE_TYPE: ["Basis"] * 50,
+            main_column.DATE: dates,
+        }
+        for j, col in enumerate(config.slice_columns):
+            data[col] = [1000.0 + i * 10 + j * 100 for i in range(50)]
+
+        original_df = pd.DataFrame(data)
+        injected_df = injector.inject(original_df)
+
+        # Find all injected rows
+        injected_mask = injected_df[main_column.RECORD_TYPE].astype(str).isin([
+            PnLSlicesScenarioNames.DRIFT,
+            PnLSlicesScenarioNames.STALE_VALUE,
+            PnLSlicesScenarioNames.CLUSTER_SHOCK_3D,
+            PnLSlicesScenarioNames.TRADE_TYPE_WIDE_SHOCK,
+            PnLSlicesScenarioNames.POINT_SHOCK,
+            PnLSlicesScenarioNames.SIGN_FLIP,
+            PnLSlicesScenarioNames.SUDDEN_ZERO,
+        ])
+
+        # For each injected row, verify all features changed consistently
+        for idx in injected_df[injected_mask].index:
+            scenario = injected_df.loc[idx, main_column.RECORD_TYPE]
+
+            if scenario == PnLSlicesScenarioNames.SIGN_FLIP:
+                for col in config.slice_columns:
+                    self.assertAlmostEqual(
+                        injected_df.loc[idx, col], -original_df.loc[idx, col], places=5,
+                        msg=f"Row {idx} ({scenario}): {col} not sign-flipped"
+                    )
+            elif scenario == PnLSlicesScenarioNames.SUDDEN_ZERO:
+                for col in config.slice_columns:
+                    self.assertEqual(
+                        injected_df.loc[idx, col], 0.0,
+                        msg=f"Row {idx} ({scenario}): {col} not zero"
+                    )
+
+    def test_pnl_slices_injections_applied(self):
+        """Validate that PnL Slices injections are applied correctly to OOS data."""
+        original_input_file = "PnL_Slices_Train-OOS.csv"
+
+        if not os.path.exists(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file)):
+            self.skipTest(f"PnL Slices input file not found: {original_input_file}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = PnLSlicesInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            config = PnLSlicesInjectorConfig.pnl_slices_preset()
+            injector = PnLSlicesOutlierInjector(config=config)
+            injected_df = injector.inject(original_df)
+
+            # 1) Row count should match
+            self.assertEqual(original_df.shape[0], injected_df.shape[0], "Row count differs")
+
+            # 2) Original should contain only Train and OOS labels
+            if main_column.RECORD_TYPE in original_df.columns:
+                allowed_labels = {"Train", "OOS"}
+                original_labels = set(original_df[main_column.RECORD_TYPE].astype(str).unique())
+                self.assertTrue(
+                    original_labels.issubset(allowed_labels),
+                    f"Original dataset has unexpected RecordType labels: {sorted(original_labels - allowed_labels)}"
+                )
+
+            # 3) All 7 injection scenarios should be present (no ScaleError)
+            expected_scenarios = {
+                PnLSlicesScenarioNames.DRIFT,
+                PnLSlicesScenarioNames.STALE_VALUE,
+                PnLSlicesScenarioNames.CLUSTER_SHOCK_3D,
+                PnLSlicesScenarioNames.TRADE_TYPE_WIDE_SHOCK,
+                PnLSlicesScenarioNames.POINT_SHOCK,
+                PnLSlicesScenarioNames.SIGN_FLIP,
+                PnLSlicesScenarioNames.SUDDEN_ZERO,
+            }
+
+            injected_labels = set(
+                injected_df[main_column.RECORD_TYPE].astype(str).unique()
+            )
+            missing = expected_scenarios - injected_labels
+            self.assertFalse(missing, f"Missing PnL Slices injection scenarios: {sorted(missing)}")
+
+            # 4) No Train rows should be changed
+            if main_column.RECORD_TYPE in original_df.columns:
+                train_mask = original_df[main_column.RECORD_TYPE] == "Train"
+                if train_mask.any():
+                    pd.testing.assert_frame_equal(
+                        original_df.loc[train_mask].reset_index(drop=True),
+                        injected_df.loc[train_mask].reset_index(drop=True),
+                        check_dtype=False
+                    )
+
+    def test_pnl_slices_injections_by_trade_type(self):
+        """Validate that PnL Slices injections respect per-trade-type configuration."""
+        original_input_file = "PnL_Slices_Train-OOS.csv"
+
+        if not os.path.exists(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file)):
+            self.skipTest(f"PnL Slices input file not found: {original_input_file}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = PnLSlicesInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            config = PnLSlicesInjectorConfig.pnl_slices_preset()
+            injector = PnLSlicesOutlierInjector(config=config)
+            injected_df = injector.inject(original_df)
+
+            for scenario in [PnLSlicesScenarioNames.DRIFT, PnLSlicesScenarioNames.STALE_VALUE,
+                             PnLSlicesScenarioNames.CLUSTER_SHOCK_3D]:
+                scenario_mask = injected_df[main_column.RECORD_TYPE] == scenario
+                if scenario_mask.any():
+                    trade_types = injected_df.loc[scenario_mask, main_column.TRADE_TYPE].unique()
+                    original_trade_types = original_df[main_column.TRADE_TYPE].unique()
+                    self.assertTrue(
+                        all(tt in original_trade_types for tt in trade_types),
+                        f"Unknown trade types in {scenario}: {trade_types}"
+                    )
+
+    def test_pnl_slices_injections_export_enriched(self):
+        """Export enriched file with original and injected PnL Slices values for review."""
+        original_input_file = "PnL_Slices_Train-OOS.csv"
+
+        if not os.path.exists(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file)):
+            self.skipTest(f"PnL Slices input file not found: {original_input_file}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_input_path = os.path.join(temp_dir, original_input_file)
+            shutil.copy2(os.path.join(ORIGINAL_INPUT_DIRECTORY, original_input_file), temp_input_path)
+
+            input_handler = PnLSlicesInput()
+            original_df = input_handler.read_and_validate(
+                temp_input_path,
+                split_identifier=main_column.TRADE_TYPE
+            )
+
+            injector = PnLSlicesOutlierInjector(config=PnLSlicesInjectorConfig.pnl_slices_preset())
+            injected_df = injector.inject(original_df)
+
+            enriched_df = original_df.copy()
+            if main_column.RECORD_TYPE in injected_df.columns:
+                enriched_df[main_column.RECORD_TYPE] = injected_df[main_column.RECORD_TYPE]
+
+            # Add injected value columns for all slice features
+            for col in pnl_slices_column.SLICE_COLUMNS:
+                injected_col = f"{col}_injected"
+                changed_mask = injected_df[col] != original_df[col]
+                enriched_df[injected_col] = injected_df[col].where(changed_mask, pd.NA)
+
+            self.assertEqual(enriched_df.shape[0], original_df.shape[0])
+
+            # Ensure at least one injected value exists
+            any_injected = any(
+                enriched_df[f"{col}_injected"].notna().any() for col in pnl_slices_column.SLICE_COLUMNS
+            )
+            self.assertTrue(any_injected, "No injected PnL Slices values found")
+
+            output_name = os.path.splitext(original_input_file)[0] + "_injected.csv"
+            output_path = os.path.join(temp_dir, output_name)
+            enriched_df.to_csv(output_path, index=False)
+            self.assertTrue(os.path.exists(output_path))
+
             shutil.copy2(output_path, os.path.join(ORIGINAL_INPUT_DIRECTORY, output_name))
 
 

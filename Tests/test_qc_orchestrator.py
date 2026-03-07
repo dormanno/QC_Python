@@ -8,11 +8,13 @@ from Tests.outlier_injectors.credit_delta import CreditDeltaOutlierInjector
 from Tests.outlier_injectors.credit_delta_config import CreditDeltaInjectorConfig
 from Tests.outlier_injectors.pv import PVOutlierInjector
 from Tests.outlier_injectors.pv_config import PVInjectorConfig
+from Tests.outlier_injectors.pnl_slices import PnLSlicesOutlierInjector
+from Tests.outlier_injectors.pnl_slices_config import PnLSlicesInjectorConfig
 from QC_Orchestrator import QCOrchestrator
 from Engine.feature_normalizer import FeatureNormalizer
-from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput
+from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput, PnLSlicesInput
 from IO.output import Output
-from column_names import pnl_column, cds_column, cdi_column, pv_column, main_column
+from column_names import pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column, main_column
 from QC_methods.qc_method_definitions import QCMethodDefinitions
 from Tests.outlier_injectors import PnLOutlierInjector
 from Tests.outlier_injectors.pnl_config import PnLInjectorConfig
@@ -203,6 +205,25 @@ class TestQCOrchestrator(unittest.TestCase):
             pv_column,
             qc_engine_presets.preset_reactive_univariate_pv,
             injector=PVOutlierInjector(config=config, severity=INJECTION_SEVERITY),
+            inject=True)
+
+    def test_QC_PnLSlices(self):
+        """Test QC for PnL Slices data."""
+        self._run_qc_test(
+            "PnL_Slices_Train-OOS.csv",
+            PnLSlicesInput(),
+            pnl_slices_column,
+            qc_engine_presets.preset_all_methods_pnl_slices)
+
+    def test_QC_PnLSlices_with_injections(self):
+        """Test QC for PnL Slices data with outlier injections."""
+        config = PnLSlicesInjectorConfig.pnl_slices_preset()
+        self._run_qc_test(
+            "PnL_Slices_Train-OOS.csv",
+            PnLSlicesInput(),
+            pnl_slices_column,
+            qc_engine_presets.preset_all_methods_pnl_slices,
+            injector=PnLSlicesOutlierInjector(config=config, severity=INJECTION_SEVERITY),
             inject=True)
 
 if __name__ == '__main__':

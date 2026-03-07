@@ -2,7 +2,7 @@ from typing import Optional
 import logging
 
 import pandas as pd
-from column_names import main_column, pnl_column, cds_column, cdi_column, pv_column
+from column_names import main_column, pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column
 
 logger = logging.getLogger(__name__)
 
@@ -265,4 +265,33 @@ class PnLInput(Input):
         eps = 1e-8
         df[pnl_column.TOTAL_JUMP] = df[pnl_column.TOTAL] / (df[pnl_column.START].abs() + eps)
         df[pnl_column.UNEXPLAINED_JUMP] = df[pnl_column.UNEXPLAINED] / (df[pnl_column.START].abs() + eps)
+        return df
+
+
+class PnLSlicesInput(Input):
+    """Handles reading and processing PnL Slices-specific input data.
+    
+    Extends Input class with PnL Slices-specific column expectations.
+    Contains 10 slice features only (no Start/End PV or engineered features).
+    """
+    
+    EXPECTED_COLS = [
+        main_column.TRADE,
+        main_column.DATE,
+        main_column.TRADE_TYPE,
+        *pnl_slices_column.SLICE_COLUMNS
+    ]
+    NUMERIC_COLS = pnl_slices_column.INPUT_FEATURES
+
+    def input_post_process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Post-process PnL Slices data.
+        
+        Currently no additional features; placeholder for future extensions.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with raw PnL Slices data.
+        
+        Returns:
+            pd.DataFrame: DataFrame unchanged.
+        """
         return df

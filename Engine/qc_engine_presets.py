@@ -8,7 +8,7 @@ to instantiate QCEngine objects. Engines are built on-demand via build_engine().
 from dataclasses import dataclass
 from typing import List, Dict
 
-from column_names import pnl_column, cds_column, cdi_column, pv_column, qc_column, QCFeatureFamily
+from column_names import pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column, qc_column, QCFeatureFamily
 from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
 from Engine.aggregator import ConsensusMode
 from Engine.qc_engine import QCEngine
@@ -177,6 +177,24 @@ methods_reactive_univariate_pv = {
 preset_reactive_univariate_pv = QCEnginePreset(
     qc_feature_families=pv_column.QC_FEATURE_FAMILIES,
     methods_config=methods_reactive_univariate_pv,
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE]
+)
+
+methods_all_pnl_slices = {
+    # QCMethodDefinitions.ISOLATION_FOREST: 1/4,
+    # QCMethodDefinitions.ROBUST_Z: 1/7,
+    QCMethodDefinitions.ROLLING: 1/2,
+    QCMethodDefinitions.IQR: 1/2,
+    # QCMethodDefinitions.LOF: 1/7,
+    # QCMethodDefinitions.ECDF: 1/4,
+    # QCMethodDefinitions.HAMPEL: 1/7,
+}
+
+preset_all_methods_pnl_slices = QCEnginePreset(
+    qc_feature_families=pnl_slices_column.QC_FEATURE_FAMILIES,
+    methods_config=methods_all_pnl_slices,
     roll_window=20,
     consensus=ConsensusMode.QUALIFIED_MAJORITY,
     filters=[QCMethodDefinitions.STALE_VALUE]

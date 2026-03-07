@@ -180,6 +180,48 @@ class PnLColumnSet(FeatureColumnSet):
 
 
 @dataclass(frozen=True)
+class PnLSlicesColumnSet(FeatureColumnSet):
+    """PnL Slices related columns (10 slice features only, no PV or engineered)."""
+    BASIS_COF: str = "Basis_CoF_PnL"
+    RECOVERY_RATE: str = "Recovery_Rate_PnL"
+    ROLL: str = "Roll_PnL"
+    RATES: str = "Rates_PnL"
+    MISC: str = "Misc_PnL"
+    MODEL: str = "Model_PnL"
+    MODS: str = "Mods_PnL"
+    CREDIT_INDEX: str = "Credit_Index_PnL"
+    CREDIT_SINGLE: str = "Credit_Single_PnL"
+    INDEX_CORRELATION: str = "IndexCorrelation_PnL"
+
+    SLICE_COLUMNS: list = None
+
+    def __post_init__(self):
+        object.__setattr__(self, 'SLICE_COLUMNS', [
+            self.BASIS_COF, self.RECOVERY_RATE, self.ROLL,
+            self.RATES, self.MISC, self.MODEL, self.MODS,
+            self.CREDIT_INDEX, self.CREDIT_SINGLE, self.INDEX_CORRELATION
+        ])
+        families = [
+            QCFeatureFamily(
+                name="PnLSlices",
+                features=tuple(self.SLICE_COLUMNS),
+                weight=1.0
+            ),
+        ]
+        object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)
+        seen = set()
+        flat_features = []
+        for fam in families:
+            for f in fam.features:
+                if f not in seen:
+                    seen.add(f)
+                    flat_features.append(f)
+        object.__setattr__(self, 'QC_FEATURES', flat_features)
+        object.__setattr__(self, 'INPUT_FEATURES', list(self.SLICE_COLUMNS))
+        object.__setattr__(self, 'ENGINEERED_FEATURES', [])
+
+
+@dataclass(frozen=True)
 class QCColumnSet:
     """QC output columns"""
     QC_FLAG: str = "EQAF_Flag"
@@ -219,3 +261,4 @@ qc_column = QCColumnSet()
 cds_column = CreditDeltaSingleColumnSet()
 cdi_column = CreditDeltaIndexColumnSet()
 pv_column = PVColumnSet()
+pnl_slices_column = PnLSlicesColumnSet()
