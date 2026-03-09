@@ -17,6 +17,11 @@ from sklearn.metrics import roc_curve, auc
 from column_names import main_column, qc_column
 
 
+def _display_name(score_col: str) -> str:
+    """Map a score column name to a chart-friendly display name."""
+    return score_col.replace("_AggScore", "").replace("_score", "")
+
+
 def build_ground_truth(merged_df: pd.DataFrame) -> pd.Series:
     """Derive binary ground truth from RecordType column.
 
@@ -78,7 +83,7 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
 
     for i, name in enumerate(method_names):
         data = roc_results[name]
-        display = label_map.get(name, name)
+        display = label_map.get(name, _display_name(name))
         ax.plot(data["fpr"], data["tpr"],
                 color=colors[i], lw=3.0,
                 label=f"{display} (AUC = {data['auc']:.3f})")
@@ -86,7 +91,7 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
     # Plot EQAF last so it's on top
     if qc_column.AGGREGATED_SCORE in roc_results:
         data = roc_results[qc_column.AGGREGATED_SCORE]
-        agg_display = label_map.get(qc_column.AGGREGATED_SCORE, qc_column.AGGREGATED_SCORE)
+        agg_display = label_map.get(qc_column.AGGREGATED_SCORE, _display_name(qc_column.AGGREGATED_SCORE))
         ax.plot(data["fpr"], data["tpr"],
                 color="black", lw=5.0, linestyle="--",
                 label=f"{agg_display} (AUC = {data['auc']:.3f})")

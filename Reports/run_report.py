@@ -27,7 +27,7 @@ from Engine import qc_engine_presets
 from Engine.feature_normalizer import FeatureNormalizer
 from IO.input import PnLInput, CreditDeltaSingleInput, CreditDeltaIndexInput, PVInput, PnLSlicesInput
 from IO.output import Output
-from column_names import pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column, main_column, FeatureColumnSet
+from column_names import pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column, main_column, qc_column, FeatureColumnSet
 from QC_Orchestrator import QCOrchestrator
 from Tests.outlier_injectors.base import OutlierInjector
 from Tests.outlier_injectors.pnl import PnLOutlierInjector
@@ -159,6 +159,16 @@ def _run_report(
     score_columns = engine_preset.get_score_columns(include_family_scores=has_multiple_families)
     merged = output_handler.attach_scores(full_data_set, oos_scores, score_cols=score_columns)
 
+    # Final report score selection:
+    # - Multi-family: family aggregate scores + final EQAF only
+    # - Single-family: method scores + final EQAF
+    if has_multiple_families:
+        report_score_columns = [f"{family.name}_AggScore" for family in families]
+        report_score_columns.append(qc_column.AGGREGATED_SCORE)
+    else:
+        report_score_columns = engine_preset.get_score_columns(include_family_scores=False)
+        report_score_columns = [c for c in report_score_columns if c != qc_column.QC_FLAG]
+
     # 5. Build naming context (date + run number + optional label)
     os.makedirs(REPORT_OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d")
@@ -176,7 +186,7 @@ def _run_report(
 
     roc_results = evaluate_roc(
         merged_df=merged,
-        score_columns=score_columns,
+        score_columns=report_score_columns,
         title=report_title,
         output_path=roc_png_path,
     )
@@ -192,7 +202,7 @@ def _run_report(
     upset_png_path = os.path.join(REPORT_OUTPUT_DIR, upset_filename)
     evaluate_upset(
         merged_df=merged,
-        score_columns=score_columns,
+        score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "True Positive Intersections"),
         output_path=upset_png_path,
@@ -209,7 +219,7 @@ def _run_report(
     perf_png_path = os.path.join(REPORT_OUTPUT_DIR, perf_filename)
     evaluate_performance(
         merged_df=merged,
-        score_columns=score_columns,
+        score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Performance Comparison"),
         output_path=perf_png_path,
@@ -226,7 +236,7 @@ def _run_report(
     heatmap_png_path = os.path.join(REPORT_OUTPUT_DIR, heatmap_filename)
     evaluate_recall_heatmap(
         merged_df=merged,
-        score_columns=score_columns,
+        score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Recall Heatmap"),
         output_path=heatmap_png_path,
@@ -242,7 +252,7 @@ def _run_report(
             # Build label map: strip family prefix so charts show method names only
             prefix = f"{family_tag}_"
             fam_label_map = {
-                col: col[len(prefix):] if col.startswith(prefix) else col
+                col: (col[len(prefix):] if col.startswith(prefix) else col).replace("_score", "")
                 for col in family_score_cols
             }
 

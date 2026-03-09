@@ -35,7 +35,7 @@ _EXCLUDED_COLUMNS = {qc_column.QC_FLAG, qc_column.STALE_SCORE}
 
 def _friendly_name(score_col: str) -> str:
     """Map a raw score column name to a short display name."""
-    return _SCORE_DISPLAY_NAMES.get(score_col, score_col.replace("_score", ""))
+    return _SCORE_DISPLAY_NAMES.get(score_col, score_col.replace("_AggScore", "").replace("_score", ""))
 
 
 def compute_confusion_matrix(
