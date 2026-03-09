@@ -41,7 +41,7 @@ def _friendly_name(score_col: str) -> str:
 def build_upset_data(
     merged_df: pd.DataFrame,
     score_columns: List[str],
-    threshold: float = 0.95,
+    threshold_percentile: float = 0.95,
 ) -> pd.DataFrame:
     """Build a DataFrame suitable for upsetplot from scored + labelled data.
 
@@ -53,8 +53,8 @@ def build_upset_data(
         merged_df: Full dataset with scores attached.  Must contain
             ``RecordType`` and all score columns.
         score_columns: Score column names from the engine preset.
-        threshold: Score value at or above which a method is considered
-            to have flagged the row.
+        threshold_percentile: Percentile (0-1) for adaptive threshold per score.
+            Each score uses its own threshold at this percentile (default 0.95).
 
     Returns:
         DataFrame with a boolean MultiIndex (one level per method using
@@ -76,11 +76,14 @@ def build_upset_data(
     if not method_cols:
         raise ValueError("No valid method score columns found for UpSet plot.")
 
-    # Build boolean detection matrix with friendly names
+    # Exclude training data for threshold computation
+    threshold_df = merged_df[merged_df[main_column.RECORD_TYPE] != "Train"].copy()
+    
+    # Build boolean detection matrix with friendly names using adaptive thresholds
     friendly_names = [_friendly_name(c) for c in method_cols]
     detection = pd.DataFrame(
         {
-            name: (eval_df[col].values >= threshold)
+            name: (eval_df[col].values >= np.quantile(threshold_df[col].values, threshold_percentile))
             for col, name in zip(method_cols, friendly_names)
         },
         index=eval_df.index,
@@ -116,7 +119,7 @@ def plot_upset_true_positives(
     Args:
         merged_df: Full dataset (Train + OOS + injected) with score columns.
         score_columns: List of score column names from engine preset.
-        threshold: Score threshold for flagging (default 0.95).
+        threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot title.
         output_path: Destination PNG path.  Defaults to
             ``Reports/upset_true_positives.png``.
@@ -201,7 +204,7 @@ def evaluate_upset(
     Args:
         merged_df: Full dataset with scores attached.
         score_columns: Score column names from engine preset.
-        threshold: Detection threshold for all scores.
+        threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot title.
         output_path: Destination PNG path (optional).
 

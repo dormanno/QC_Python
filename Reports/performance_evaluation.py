@@ -41,7 +41,7 @@ def _friendly_name(score_col: str) -> str:
 def compute_confusion_matrix(
     merged_df: pd.DataFrame,
     score_columns: List[str],
-    threshold: float = 0.95,
+    threshold_percentile: float = 0.95,
     label_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, int]]:
     """Compute TP, FP, TN, FN per method score column.
@@ -54,7 +54,8 @@ def compute_confusion_matrix(
     Args:
         merged_df: Full dataset with scores and RecordType column.
         score_columns: Score column names from engine preset.
-        threshold: Score >= threshold is classified as outlier.
+        threshold_percentile: Percentile (0-1) for adaptive threshold per score.
+            Each score uses its own threshold at this percentile (default 0.95).
 
     Returns:
         Dict mapping friendly method name -> {"TP": int, "FP": int,
@@ -77,6 +78,8 @@ def compute_confusion_matrix(
     results: Dict[str, Dict[str, int]] = {}
     for col in method_cols:
         scores = eval_df[col].values
+        # Compute adaptive threshold as percentile of this score's distribution
+        threshold = np.quantile(scores, threshold_percentile)
         predicted = (scores >= threshold).astype(int)
 
         tp = int(((predicted == 1) & (y_true == 1)).sum())
@@ -271,7 +274,7 @@ def evaluate_performance(
     Args:
         merged_df: Full dataset with scores attached.
         score_columns: Score column names from engine preset.
-        threshold: Detection threshold for all scores (default 0.95).
+        threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot super-title.
         output_path: Destination PNG path (optional).
         label_map: Optional mapping of score column name -> display label
@@ -293,7 +296,7 @@ def evaluate_performance(
     print(f"Performance comparison chart saved to: {saved}")
 
     # Print summary table
-    print(f"\nPerformance Summary (threshold = {threshold}):")
+    print(f"\nPerformance Summary (adaptive threshold = p{threshold*100:.0f}):")
     print(f"  {'Method':<20s} {'Recall':>8s} {'Specif.':>8s} {'Precis.':>8s} {'F1':>8s}"
           f"  {'TP':>5s} {'FP':>5s} {'TN':>5s} {'FN':>5s}")
     print("  " + "-" * 80)

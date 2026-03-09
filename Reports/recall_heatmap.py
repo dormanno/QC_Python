@@ -43,7 +43,7 @@ def _friendly_name(score_col: str) -> str:
 def compute_recall_by_injection_type(
     merged_df: pd.DataFrame,
     score_columns: List[str],
-    threshold: float = 0.95,
+    threshold_percentile: float = 0.95,
 ) -> pd.DataFrame:
     """Compute Recall per method per injection scenario type.
 
@@ -55,7 +55,8 @@ def compute_recall_by_injection_type(
     Args:
         merged_df: Full dataset with scores and RecordType column.
         score_columns: Score column names from engine preset.
-        threshold: Score >= threshold is classified as outlier.
+        threshold_percentile: Percentile (0-1) for adaptive threshold per score.
+            Each score uses its own threshold at this percentile (default 0.95).
 
     Returns:
         DataFrame with methods as rows and injection types as columns,
@@ -81,6 +82,9 @@ def compute_recall_by_injection_type(
     records = {}
     for col in method_cols:
         name = _friendly_name(col)
+        # Compute adaptive threshold for this score column
+        col_scores = eval_df[col].values
+        threshold = np.quantile(col_scores, threshold_percentile)
         row: Dict[str, float] = {}
         for inj_type in injection_types:
             mask = eval_df[main_column.RECORD_TYPE] == inj_type
@@ -186,7 +190,7 @@ def evaluate_recall_heatmap(
     Args:
         merged_df: Full dataset with scores attached.
         score_columns: Score column names from engine preset.
-        threshold: Detection threshold for all scores (default 0.95).
+        threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot title.
         output_path: Destination PNG path (optional).
 
@@ -205,7 +209,7 @@ def evaluate_recall_heatmap(
     print(f"Recall heatmap saved to: {saved}")
 
     # Print summary table
-    print(f"\nRecall by Injection Type (threshold = {threshold}):")
+    print(f"\nRecall by Injection Type (adaptive threshold = p{threshold*100:.0f}):")
     header_types = recall_df.columns.tolist()
     header = f"  {'Method':<20s}" + "".join(f" {t:>14s}" for t in header_types)
     print(header)
