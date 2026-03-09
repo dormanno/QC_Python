@@ -99,7 +99,7 @@ class ScoreAggregator:
 
                 if self.consensus != ConsensusMode.NONE:
                     ones_count = sum(
-                        1 for col in valid_cols if row[col] >= 1.0 - 1e-12
+                        1 for col in valid_cols if row[col] >= self.red_lo #1.0 - 1e-12
                     )
                     method_count = len(valid_cols)
                     if self.consensus == ConsensusMode.SIMPLE_MAJORITY:

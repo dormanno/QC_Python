@@ -13,6 +13,7 @@ from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinit
 from Engine.aggregator import ConsensusMode
 from Engine.qc_engine import QCEngine
 from Engine.score_normalizer import ScoreNormalizer
+from Engine.family_aggregator import FamilyAggregationMode
 
 
 @dataclass
@@ -27,12 +28,14 @@ class QCEnginePreset:
         methods_config: Dictionary mapping QCMethodDefinition instances to weights.
         roll_window: Window size for rolling methods.
         filters: List of QCMethodDefinition instances for filter methods (e.g., stale value detection).
+        family_aggregation_mode: Mode for aggregating scores across families (NOISY_OR or MAX).
     """
     qc_feature_families: List[QCFeatureFamily]
     methods_config: Dict[QCMethodDefinition, float]
     roll_window: int = 20
     consensus: ConsensusMode | str = ConsensusMode.NONE
     filters: List[QCMethodDefinition] = None
+    family_aggregation_mode: FamilyAggregationMode | str = FamilyAggregationMode.NOISY_OR
 
     def __post_init__(self):
         """Validate feature family weights and initialize filters."""
@@ -154,6 +157,7 @@ class MultiFamilyQCEnginePreset(QCEnginePreset):
         roll_window: int = 20,
         consensus: ConsensusMode | str = ConsensusMode.NONE,
         filters: Optional[List[QCMethodDefinition]] = None,
+        family_aggregation_mode: FamilyAggregationMode | str = FamilyAggregationMode.NOISY_OR,
     ):
         self.family_methods_config = family_methods_config
         super().__init__(
@@ -162,6 +166,7 @@ class MultiFamilyQCEnginePreset(QCEnginePreset):
             roll_window=roll_window,
             consensus=consensus,
             filters=filters,
+            family_aggregation_mode=family_aggregation_mode,
         )
 
     # -- helpers ---------------------------------------------------------
@@ -217,11 +222,11 @@ class MultiFamilyQCEnginePreset(QCEnginePreset):
 
 method_config_temporal_multivariate = {
     QCMethodDefinitions.ISOLATION_FOREST: 0.25,
-    QCMethodDefinitions.ROLLING: 0.15,
-    QCMethodDefinitions.HAMPEL: 0.10,
-    QCMethodDefinitions.ROBUST_Z: 0.15,
-    QCMethodDefinitions.LOF: 0.20,
-    QCMethodDefinitions.ECDF: 0.15
+    QCMethodDefinitions.ROLLING: 0.20,
+    QCMethodDefinitions.HAMPEL: 0.15,
+    QCMethodDefinitions.ROBUST_Z: 0.20,
+    # QCMethodDefinitions.LOF: 0.20,
+    QCMethodDefinitions.ECDF: 0.20
 }
 
 preset_temporal_multivariate_pnl = QCEnginePreset(
@@ -284,13 +289,13 @@ preset_reactive_univariate_pv = QCEnginePreset(
 )
 
 methods_all_pnl_slices = {
-    QCMethodDefinitions.ISOLATION_FOREST: 1/7,
-    QCMethodDefinitions.ROBUST_Z: 1/7,
-    QCMethodDefinitions.ROLLING: 1/7,
-    QCMethodDefinitions.IQR: 1/7,
-    QCMethodDefinitions.LOF: 1/7,
-    QCMethodDefinitions.ECDF: 1/7,
-    QCMethodDefinitions.HAMPEL: 1/7,
+    QCMethodDefinitions.ISOLATION_FOREST: 1/6,
+    QCMethodDefinitions.ROBUST_Z: 1/6,
+    QCMethodDefinitions.ROLLING: 1/6,
+    QCMethodDefinitions.IQR: 1/6,
+    # QCMethodDefinitions.LOF: 1/7,
+    QCMethodDefinitions.ECDF: 1/6,
+    QCMethodDefinitions.HAMPEL: 1/6,
 }
 
 preset_all_methods_pnl_slices = QCEnginePreset(
@@ -306,23 +311,23 @@ preset_all_methods_pnl_slices = QCEnginePreset(
 # Edit the dicts below to tune each family independently.
 
 methods_pnl_slices_small = {
-    # QCMethodDefinitions.ISOLATION_FOREST: 1/5,
+    QCMethodDefinitions.ISOLATION_FOREST: 1/4,
     # QCMethodDefinitions.ROBUST_Z: 1/7,
-    QCMethodDefinitions.ROLLING: 1/3,
-    QCMethodDefinitions.IQR: 1/3,
+    QCMethodDefinitions.ROLLING: 1/4,
+    # QCMethodDefinitions.IQR: 1/3,
     # QCMethodDefinitions.LOF: 1/7,
-    QCMethodDefinitions.ECDF: 1/3,
-    # QCMethodDefinitions.HAMPEL: 1/5,
+    QCMethodDefinitions.ECDF: 1/4,
+    QCMethodDefinitions.HAMPEL: 1/4,
 }
 
 methods_pnl_slices_large = {
-    # QCMethodDefinitions.ISOLATION_FOREST: 1/7,
-    # QCMethodDefinitions.ROBUST_Z: 1/4,
-    QCMethodDefinitions.ROLLING: 1/3,
-    QCMethodDefinitions.IQR: 1/3,
+    QCMethodDefinitions.ISOLATION_FOREST: 1/5,
+    QCMethodDefinitions.ROBUST_Z: 1/5,
+    QCMethodDefinitions.ROLLING: 1/5,
+    # QCMethodDefinitions.IQR: 1/3,
     # QCMethodDefinitions.LOF: 1/7,
-    QCMethodDefinitions.ECDF: 1/3,
-    # QCMethodDefinitions.HAMPEL: 1/5,
+    QCMethodDefinitions.ECDF: 1/5,
+    QCMethodDefinitions.HAMPEL: 1/5,
 }
 
 preset_per_family_pnl_slices = MultiFamilyQCEnginePreset(
@@ -332,9 +337,10 @@ preset_per_family_pnl_slices = MultiFamilyQCEnginePreset(
         "SmallSlices": methods_pnl_slices_small,
         "LargeSlices": methods_pnl_slices_large,
     },
-    roll_window=20,
+    roll_window=40,
     consensus=ConsensusMode.QUALIFIED_MAJORITY,
     filters=[QCMethodDefinitions.STALE_VALUE],
+    family_aggregation_mode=FamilyAggregationMode.MAX,
 )
 
 # ============================================================================

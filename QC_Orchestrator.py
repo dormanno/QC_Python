@@ -6,6 +6,7 @@ from column_names import main_column, qc_column
 from Engine.feature_normalizer import FeatureNormalizer
 from Engine.qc_engine import QCEngine
 from Engine.qc_engine_presets import QCEnginePreset
+from Engine.family_aggregator import FamilyAggregator
 
 logger = logging.getLogger(__name__)
 # Default configuration
@@ -40,6 +41,7 @@ class QCOrchestrator:
         self.engine_preset = engine_preset
         self.split_identifier = split_identifier
         self.keep_family_scores = keep_family_scores
+        self.family_aggregator = FamilyAggregator(mode=engine_preset.family_aggregation_mode)
 
     def _split_train_test_by_date(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List]:
         """Split data into train/test sets based on date cutoff.
@@ -170,12 +172,12 @@ class QCOrchestrator:
 
     def _score_and_collect(self, family_engines: Dict[str, QCEngine],
                            day_data: pd.DataFrame, date, keep_family_scores: bool = False) -> pd.DataFrame:
-        """Score a day subset with all family engines and combine via weighted noisy-OR.
+        """Score a day subset with all family engines and combine scores.
         
         For each feature family, scores are computed using the family's dedicated engine.
         Per-method scores are combined across families using weighted average.
-        Family-level aggregated scores are combined via weighted noisy-OR:
-            combined = 1 - prod((1 - family_agg_i) ^ weight_i)
+        Family-level aggregated scores are combined using the configured FamilyAggregator
+        (either weighted noisy-OR or weighted MAX).
         
         Args:
             family_engines (Dict[str, QCEngine]): Engines keyed by family name.
@@ -220,11 +222,9 @@ class QCOrchestrator:
         remaining = [c for c in combined_method_scores.columns if c not in ordered]
         combined_method_scores = combined_method_scores[ordered + remaining]
 
-        # Combine aggregated scores: weighted noisy-OR = 1 - prod((1 - s_i) ^ w_i)
-        survival = pd.Series(1.0, index=day_data.index)
-        for weight, agg in family_agg_scores:
-            survival *= (1 - agg).clip(lower=0.0) ** weight
-        combined_agg = (1 - survival).clip(0.0, 1.0).rename(qc_column.AGGREGATED_SCORE)
+        # Combine family aggregated scores using configured aggregator (noisy-OR or MAX)
+        combined_agg = self.family_aggregator.aggregate(family_agg_scores)
+        combined_agg = combined_agg.rename(qc_column.AGGREGATED_SCORE)
         
         # Map to flag using first family engine's aggregator thresholds
         first_engine = family_engines[families[0].name]

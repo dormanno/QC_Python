@@ -205,12 +205,12 @@ class PnLSlicesColumnSet(FeatureColumnSet):
             QCFeatureFamily(
                 name="SmallSlices",
                 features=(self.BASIS_COF, self.RECOVERY_RATE, self.ROLL,
-                          self.RATES, self.MISC, self.MODEL),
+                          self.RATES, self.MISC),
                 weight=0.5
             ),
             QCFeatureFamily(
                 name="LargeSlices",
-                features=(self.MODS, self.CREDIT_INDEX, self.CREDIT_SINGLE,
+                features=(self.MODEL, self.MODS, self.CREDIT_INDEX, self.CREDIT_SINGLE,
                           self.INDEX_CORRELATION),
                 weight=0.5
             ),
