@@ -5,8 +5,8 @@ This module defines QCEnginePreset instances that hold all parameters needed
 to instantiate QCEngine objects. Engines are built on-demand via build_engine().
 """
 
-from dataclasses import dataclass
-from typing import List, Dict
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
 
 from column_names import pnl_column, cds_column, cdi_column, pv_column, pnl_slices_column, qc_column, QCFeatureFamily
 from QC_methods.qc_method_definitions import QCMethodDefinition, QCMethodDefinitions
@@ -114,6 +114,107 @@ class QCEnginePreset:
         
         return result
 
+    def get_family_score_columns(self, family: QCFeatureFamily) -> List[str]:
+        """Get score columns for a specific feature family.
+
+        Returns the family-prefixed per-method scores and the family aggregated
+        score column name.
+
+        Args:
+            family: The feature family to get score columns for.
+
+        Returns:
+            List[str]: Family-specific score column names,
+                e.g. ["Valuation_IF_score", ..., "Valuation_AggScore"].
+        """
+        result = []
+        for method_def in self.methods_config.keys():
+            result.append(f"{family.name}_{method_def.score_name}")
+        result.append(f"{family.name}_AggScore")
+        return result
+
+class MultiFamilyQCEnginePreset(QCEnginePreset):
+    """Preset that allows different QC method configurations per feature family.
+
+    Inherits from QCEnginePreset. When a family has an entry in
+    ``family_methods_config``, that configuration is used instead of the
+    base ``methods_config``.
+
+    Attributes:
+        family_methods_config: Mapping of family name to its own
+            {QCMethodDefinition: weight} dictionary. Families not listed
+            here fall back to the base ``methods_config``.
+    """
+
+    def __init__(
+        self,
+        qc_feature_families: List[QCFeatureFamily],
+        methods_config: Dict[QCMethodDefinition, float],
+        family_methods_config: Dict[str, Dict[QCMethodDefinition, float]],
+        roll_window: int = 20,
+        consensus: ConsensusMode | str = ConsensusMode.NONE,
+        filters: Optional[List[QCMethodDefinition]] = None,
+    ):
+        self.family_methods_config = family_methods_config
+        super().__init__(
+            qc_feature_families=qc_feature_families,
+            methods_config=methods_config,
+            roll_window=roll_window,
+            consensus=consensus,
+            filters=filters,
+        )
+
+    # -- helpers ---------------------------------------------------------
+
+    def _methods_for_family(self, family: QCFeatureFamily) -> Dict[QCMethodDefinition, float]:
+        """Return the method config applicable to *family*."""
+        return self.family_methods_config.get(family.name, self.methods_config)
+
+    # -- overrides -------------------------------------------------------
+
+    def build_engine(self, family: QCFeatureFamily) -> QCEngine:
+        """Build a QCEngine using the family-specific method config."""
+        return QCEngine(
+            qc_features=list(family.features),
+            methods_config=self._methods_for_family(family),
+            roll_window=self.roll_window,
+            score_normalizer=ScoreNormalizer(),
+            consensus=self.consensus,
+            filters=self.filters,
+        )
+
+    def get_score_columns(self, include_family_scores: bool = False) -> List[str]:
+        """Score columns as the union of all per-family methods."""
+        result: List[str] = []
+
+        if include_family_scores:
+            for family in self.qc_feature_families:
+                fam_config = self._methods_for_family(family)
+                for method_def in fam_config:
+                    result.append(f"{family.name}_{method_def.score_name}")
+                result.append(f"{family.name}_AggScore")
+
+        # Combined columns = union of all method score names (order-preserving)
+        seen: set = set()
+        combined: List[str] = []
+        for family in self.qc_feature_families:
+            for method_def in self._methods_for_family(family):
+                if method_def.score_name not in seen:
+                    seen.add(method_def.score_name)
+                    combined.append(method_def.score_name)
+        result.extend(combined)
+        result.append(qc_column.AGGREGATED_SCORE)
+        result.append(qc_column.QC_FLAG)
+        return result
+
+    def get_family_score_columns(self, family: QCFeatureFamily) -> List[str]:
+        """Score columns for a specific family (family-prefixed)."""
+        fam_config = self._methods_for_family(family)
+        result = [f"{family.name}_{md.score_name}" for md in fam_config]
+        result.append(f"{family.name}_AggScore")
+        return result
+
+
 method_config_temporal_multivariate = {
     QCMethodDefinitions.ISOLATION_FOREST: 0.25,
     QCMethodDefinitions.ROLLING: 0.15,
@@ -183,13 +284,13 @@ preset_reactive_univariate_pv = QCEnginePreset(
 )
 
 methods_all_pnl_slices = {
-    # QCMethodDefinitions.ISOLATION_FOREST: 1/4,
-    # QCMethodDefinitions.ROBUST_Z: 1/7,
-    QCMethodDefinitions.ROLLING: 1/2,
-    QCMethodDefinitions.IQR: 1/2,
-    # QCMethodDefinitions.LOF: 1/7,
-    # QCMethodDefinitions.ECDF: 1/4,
-    # QCMethodDefinitions.HAMPEL: 1/7,
+    QCMethodDefinitions.ISOLATION_FOREST: 1/7,
+    QCMethodDefinitions.ROBUST_Z: 1/7,
+    QCMethodDefinitions.ROLLING: 1/7,
+    QCMethodDefinitions.IQR: 1/7,
+    QCMethodDefinitions.LOF: 1/7,
+    QCMethodDefinitions.ECDF: 1/7,
+    QCMethodDefinitions.HAMPEL: 1/7,
 }
 
 preset_all_methods_pnl_slices = QCEnginePreset(
@@ -198,6 +299,42 @@ preset_all_methods_pnl_slices = QCEnginePreset(
     roll_window=20,
     consensus=ConsensusMode.QUALIFIED_MAJORITY,
     filters=[QCMethodDefinitions.STALE_VALUE]
+)
+
+# ---------- PnL Slices per-family presets (MultiFamilyQCEnginePreset) ----------
+# SmallSlices and LargeSlices get their own method mix.
+# Edit the dicts below to tune each family independently.
+
+methods_pnl_slices_small = {
+    # QCMethodDefinitions.ISOLATION_FOREST: 1/5,
+    # QCMethodDefinitions.ROBUST_Z: 1/7,
+    QCMethodDefinitions.ROLLING: 1/3,
+    QCMethodDefinitions.IQR: 1/3,
+    # QCMethodDefinitions.LOF: 1/7,
+    QCMethodDefinitions.ECDF: 1/3,
+    # QCMethodDefinitions.HAMPEL: 1/5,
+}
+
+methods_pnl_slices_large = {
+    # QCMethodDefinitions.ISOLATION_FOREST: 1/7,
+    # QCMethodDefinitions.ROBUST_Z: 1/4,
+    QCMethodDefinitions.ROLLING: 1/3,
+    QCMethodDefinitions.IQR: 1/3,
+    # QCMethodDefinitions.LOF: 1/7,
+    QCMethodDefinitions.ECDF: 1/3,
+    # QCMethodDefinitions.HAMPEL: 1/5,
+}
+
+preset_per_family_pnl_slices = MultiFamilyQCEnginePreset(
+    qc_feature_families=pnl_slices_column.QC_FEATURE_FAMILIES,
+    methods_config=methods_all_pnl_slices,              # fallback (unused when all families are listed)
+    family_methods_config={
+        "SmallSlices": methods_pnl_slices_small,
+        "LargeSlices": methods_pnl_slices_large,
+    },
+    roll_window=20,
+    consensus=ConsensusMode.QUALIFIED_MAJORITY,
+    filters=[QCMethodDefinitions.STALE_VALUE],
 )
 
 # ============================================================================

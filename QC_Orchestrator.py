@@ -198,13 +198,22 @@ class QCOrchestrator:
             family_method_scores.append((family.weight, day_scores))
             family_agg_scores.append((family.weight, aggregated_score))
         
-        # Combine per-method scores: weighted average across families
-        first_scores = family_method_scores[0][1]
+        # Combine per-method scores: weighted average across families.
+        # Families may have different method columns; use the union of all
+        # columns and contribute each family's weight only to methods it has.
+        all_score_cols: list = []
+        seen_cols: set = set()
+        for _, scores in family_method_scores:
+            for c in scores.columns:
+                if c not in seen_cols:
+                    seen_cols.add(c)
+                    all_score_cols.append(c)
+
         combined_method_scores = pd.DataFrame(
-            0.0, index=first_scores.index, columns=first_scores.columns
+            0.0, index=family_method_scores[0][1].index, columns=all_score_cols
         )
         for weight, scores in family_method_scores:
-            combined_method_scores += weight * scores
+            combined_method_scores[scores.columns] += weight * scores
 
         # Reorder method score columns to respect SCORE_COLUMNS canonical order
         ordered = [c for c in qc_column.SCORE_COLUMNS if c in combined_method_scores.columns]

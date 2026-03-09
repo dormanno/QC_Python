@@ -50,7 +50,8 @@ def compute_roc_data(y_true: np.ndarray,
 def plot_roc_curves(roc_results: Dict[str, Dict],
                     title: str = "ROC Curves — QC Methods & EQAF",
                     output_path: Optional[str] = None,
-                    figsize: tuple = (10, 8)) -> str:
+                    figsize: tuple = (10, 8),
+                    label_map: Optional[Dict[str, str]] = None) -> str:
     """Plot ROC curves for multiple scores on one figure and save as PNG.
 
     Args:
@@ -60,10 +61,15 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
         output_path: Destination PNG path. If None, saves to
             ``Reports/roc_curve.png`` relative to this file.
         figsize: Figure size in inches.
+        label_map: Optional mapping of score column name -> display label.
+            If provided, labels on the legend use these values instead of
+            the raw column names.
 
     Returns:
         Absolute path to the saved PNG file.
     """
+    if label_map is None:
+        label_map = {}
     fig, ax = plt.subplots(figsize=figsize)
 
     # Color map: EQAF gets a distinct style, methods get tab colors
@@ -72,16 +78,18 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
 
     for i, name in enumerate(method_names):
         data = roc_results[name]
+        display = label_map.get(name, name)
         ax.plot(data["fpr"], data["tpr"],
                 color=colors[i], lw=3.0,
-                label=f"{name} (AUC = {data['auc']:.3f})")
+                label=f"{display} (AUC = {data['auc']:.3f})")
 
     # Plot EQAF last so it's on top
     if qc_column.AGGREGATED_SCORE in roc_results:
         data = roc_results[qc_column.AGGREGATED_SCORE]
+        agg_display = label_map.get(qc_column.AGGREGATED_SCORE, qc_column.AGGREGATED_SCORE)
         ax.plot(data["fpr"], data["tpr"],
                 color="black", lw=5.0, linestyle="--",
-                label=f"{qc_column.AGGREGATED_SCORE} (AUC = {data['auc']:.3f})")
+                label=f"{agg_display} (AUC = {data['auc']:.3f})")
 
     # Diagonal reference
     ax.plot([0, 1], [0, 1], color="grey", lw=2, linestyle=":")
@@ -108,7 +116,8 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
 def evaluate_roc(merged_df: pd.DataFrame,
                  score_columns: List[str],
                  title: str = "ROC Curves — QC Methods & EQAF",
-                 output_path: Optional[str] = None) -> Dict[str, Dict]:
+                 output_path: Optional[str] = None,
+                 label_map: Optional[Dict[str, str]] = None) -> Dict[str, Dict]:
     """End-to-end ROC evaluation: build ground truth, compute ROC, plot & save.
 
     Args:
@@ -120,6 +129,8 @@ def evaluate_roc(merged_df: pd.DataFrame,
             column is skipped automatically since it is categorical.
         title: Plot title.
         output_path: Destination PNG path (optional).
+        label_map: Optional mapping of score column name -> display label
+            for chart legends.
 
     Returns:
         Dict mapping score_name -> {fpr, tpr, thresholds, auc}.
@@ -149,7 +160,8 @@ def evaluate_roc(merged_df: pd.DataFrame,
         scores = eval_df[col].values
         roc_results[col] = compute_roc_data(y_true.values, scores)
 
-    saved_path = plot_roc_curves(roc_results, title=title, output_path=output_path)
+    saved_path = plot_roc_curves(roc_results, title=title, output_path=output_path,
+                                   label_map=label_map)
     print(f"ROC curve saved to: {saved_path}")
 
     # Print AUC summary

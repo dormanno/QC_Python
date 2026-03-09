@@ -213,7 +213,8 @@ class TestQCOrchestrator(unittest.TestCase):
             "PnL_Slices_Train-OOS.csv",
             PnLSlicesInput(),
             pnl_slices_column,
-            qc_engine_presets.preset_all_methods_pnl_slices)
+            qc_engine_presets.preset_all_methods_pnl_slices,
+            keep_family_scores=True)
 
     def test_QC_PnLSlices_with_injections(self):
         """Test QC for PnL Slices data with outlier injections."""
@@ -224,7 +225,8 @@ class TestQCOrchestrator(unittest.TestCase):
             pnl_slices_column,
             qc_engine_presets.preset_all_methods_pnl_slices,
             injector=PnLSlicesOutlierInjector(config=config, severity=INJECTION_SEVERITY),
-            inject=True)
+            inject=True,
+            keep_family_scores=True)
 
 if __name__ == '__main__':
     unittest.main()

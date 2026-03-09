@@ -83,18 +83,21 @@ def _run_report(
     logger.info(f"Injected {injected_count} outlier rows")
 
     # 3. Normalizer + Orchestrator
+    families = engine_preset.qc_feature_families
+    has_multiple_families = len(families) > 1
     normalizer = FeatureNormalizer(features=column_set.QC_FEATURES)
     orchestrator = QCOrchestrator(
         normalizer=normalizer,
         engine_preset=engine_preset,
         split_identifier=main_column.TRADE_TYPE,
+        keep_family_scores=has_multiple_families,
     )
     oos_scores = orchestrator.run(full_data_set)
     logger.info(f"Scored {len(oos_scores)} OOS rows")
 
     # 4. Merge scores back to full dataset
     output_handler = Output()
-    score_columns = engine_preset.get_score_columns()
+    score_columns = engine_preset.get_score_columns(include_family_scores=has_multiple_families)
     merged = output_handler.attach_scores(full_data_set, oos_scores, score_cols=score_columns)
 
     # 5. Generate ROC report
@@ -140,6 +143,49 @@ def _run_report(
         title=report_title.replace("ROC Curves", "Recall Heatmap"),
         output_path=heatmap_png_path,
     )
+
+    # 9. Per-family reports (ROC + Performance) — only when multiple families exist
+    if has_multiple_families:
+        overall_score_columns = engine_preset.get_score_columns(include_family_scores=False)
+        for family in families:
+            family_score_cols = engine_preset.get_family_score_columns(family)
+            family_tag = family.name
+            base_name = os.path.splitext(output_filename)[0]  # e.g. "roc_curve_pnl"
+            ext = os.path.splitext(output_filename)[1]        # e.g. ".png"
+
+            # Build label map: strip family prefix so charts show method names only
+            prefix = f"{family_tag}_"
+            fam_label_map = {
+                col: col[len(prefix):] if col.startswith(prefix) else col
+                for col in family_score_cols
+            }
+
+            # 9a. Per-family ROC
+            fam_roc_filename = f"{base_name}_{family_tag}{ext}"
+            fam_roc_path = os.path.join(REPORT_OUTPUT_DIR, fam_roc_filename)
+            fam_roc_title = f"{report_title} — {family_tag}"
+            evaluate_roc(
+                merged_df=merged,
+                score_columns=family_score_cols,
+                title=fam_roc_title,
+                output_path=fam_roc_path,
+                label_map=fam_label_map,
+            )
+            logger.info(f"Saved per-family ROC: {fam_roc_filename}")
+
+            # 9b. Per-family Performance
+            fam_perf_filename = f"{base_name.replace('roc_curve', 'performance')}_{family_tag}{ext}"
+            fam_perf_path = os.path.join(REPORT_OUTPUT_DIR, fam_perf_filename)
+            fam_perf_title = report_title.replace("ROC Curves", "Performance Comparison") + f" — {family_tag}"
+            evaluate_performance(
+                merged_df=merged,
+                score_columns=family_score_cols,
+                threshold=0.95,
+                title=fam_perf_title,
+                output_path=fam_perf_path,
+                label_map=fam_label_map,
+            )
+            logger.info(f"Saved per-family Performance: {fam_perf_filename}")
 
     return roc_results
 
@@ -237,7 +283,7 @@ def run_pnl_slices_report():
         input_file="PnL_Slices_Train-OOS.csv",
         input_handler=PnLSlicesInput(),
         column_set=pnl_slices_column,
-        engine_preset=qc_engine_presets.preset_all_methods_pnl_slices,
+        engine_preset=qc_engine_presets.preset_per_family_pnl_slices,
         injector=injector,
         report_title="ROC Curves — PnL Slices",
         output_filename="roc_curve_pnl_slices.png",

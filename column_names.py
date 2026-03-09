@@ -203,9 +203,16 @@ class PnLSlicesColumnSet(FeatureColumnSet):
         ])
         families = [
             QCFeatureFamily(
-                name="PnLSlices",
-                features=tuple(self.SLICE_COLUMNS),
-                weight=1.0
+                name="SmallSlices",
+                features=(self.BASIS_COF, self.RECOVERY_RATE, self.ROLL,
+                          self.RATES, self.MISC, self.MODEL),
+                weight=0.5
+            ),
+            QCFeatureFamily(
+                name="LargeSlices",
+                features=(self.MODS, self.CREDIT_INDEX, self.CREDIT_SINGLE,
+                          self.INDEX_CORRELATION),
+                weight=0.5
             ),
         ]
         object.__setattr__(self, 'QC_FEATURE_FAMILIES', families)

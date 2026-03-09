@@ -42,6 +42,7 @@ def compute_confusion_matrix(
     merged_df: pd.DataFrame,
     score_columns: List[str],
     threshold: float = 0.95,
+    label_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, int]]:
     """Compute TP, FP, TN, FN per method score column.
 
@@ -70,6 +71,9 @@ def compute_confusion_matrix(
         if c not in _EXCLUDED_COLUMNS and c in eval_df.columns
     ]
 
+    if label_map is None:
+        label_map = {}
+
     results: Dict[str, Dict[str, int]] = {}
     for col in method_cols:
         scores = eval_df[col].values
@@ -80,7 +84,8 @@ def compute_confusion_matrix(
         tn = int(((predicted == 0) & (y_true == 0)).sum())
         fn = int(((predicted == 0) & (y_true == 1)).sum())
 
-        results[_friendly_name(col)] = {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
+        display = label_map.get(col, _friendly_name(col))
+        results[display] = {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
 
     return results
 
@@ -256,6 +261,7 @@ def evaluate_performance(
     threshold: float = 0.95,
     title: str = "Performance Comparison of Detection Methods",
     output_path: Optional[str] = None,
+    label_map: Optional[Dict[str, str]] = None,
 ) -> str:
     """End-to-end performance evaluation: confusion matrix → metrics → plot.
 
@@ -268,11 +274,14 @@ def evaluate_performance(
         threshold: Detection threshold for all scores (default 0.95).
         title: Plot super-title.
         output_path: Destination PNG path (optional).
+        label_map: Optional mapping of score column name -> display label
+            for chart labels.
 
     Returns:
         Absolute path to the saved PNG file.
     """
-    confusion = compute_confusion_matrix(merged_df, score_columns, threshold)
+    confusion = compute_confusion_matrix(merged_df, score_columns, threshold,
+                                         label_map=label_map)
     perf_metrics = compute_performance_metrics(confusion)
 
     saved = plot_performance(
