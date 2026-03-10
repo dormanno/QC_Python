@@ -56,7 +56,8 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
                     title: str = "ROC Curves — QC Methods & EQAF",
                     output_path: Optional[str] = None,
                     figsize: tuple = (10, 8),
-                    label_map: Optional[Dict[str, str]] = None) -> str:
+                    label_map: Optional[Dict[str, str]] = None,
+                    style_mode: str = "color") -> str:
     """Plot ROC curves for multiple scores on one figure and save as PNG.
 
     Args:
@@ -69,6 +70,7 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
         label_map: Optional mapping of score column name -> display label.
             If provided, labels on the legend use these values instead of
             the raw column names.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
@@ -80,21 +82,58 @@ def plot_roc_curves(roc_results: Dict[str, Dict],
     # Color map: EQAF gets a distinct style, methods get tab colors
     method_names = [k for k in roc_results if k != qc_column.AGGREGATED_SCORE]
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(method_names), 1)))
+    is_gray = style_mode == "gray"
+    gray_linestyles = ["-", "--", "-.", ":", (0, (5, 2)), (0, (3, 1, 1, 1))]
+
+    # Overall multi-family ROC contains only family aggregate scores (+ EQAF).
+    # In this chart, family aggregate lines should not be bold.
+    is_overall_family_agg_chart = (
+        len(method_names) > 0 and all(name.endswith("_AggScore") for name in method_names)
+    )
 
     for i, name in enumerate(method_names):
         data = roc_results[name]
         display = label_map.get(name, _display_name(name))
-        ax.plot(data["fpr"], data["tpr"],
-                color=colors[i], lw=3.0,
-                label=f"{display} (AUC = {data['auc']:.3f})")
+        if is_gray:
+            is_agg_curve = name.endswith("_AggScore")
+            line_style = gray_linestyles[i % len(gray_linestyles)]
+
+            if is_agg_curve:
+                line_width = 2.0 if is_overall_family_agg_chart else 3.8
+            else:
+                line_width = 1.6
+
+            ax.plot(
+                data["fpr"],
+                data["tpr"],
+                color="black",
+                lw=line_width,
+                linestyle=line_style,
+                marker=None,
+                markevery=None,
+                markersize=None,
+                label=f"{display} (AUC = {data['auc']:.3f})",
+            )
+        else:
+            ax.plot(data["fpr"], data["tpr"],
+                    color=colors[i], lw=3.0,
+                    label=f"{display} (AUC = {data['auc']:.3f})")
 
     # Plot EQAF last so it's on top
     if qc_column.AGGREGATED_SCORE in roc_results:
         data = roc_results[qc_column.AGGREGATED_SCORE]
         agg_display = label_map.get(qc_column.AGGREGATED_SCORE, _display_name(qc_column.AGGREGATED_SCORE))
-        ax.plot(data["fpr"], data["tpr"],
-                color="black", lw=5.0, linestyle="--",
-                label=f"{agg_display} (AUC = {data['auc']:.3f})")
+        ax.plot(
+            data["fpr"],
+            data["tpr"],
+            color="black",
+            lw=4.6 if is_gray else 5.0,
+            linestyle="-" if is_gray else "--",
+            marker=None,
+            markevery=None,
+            markersize=None,
+            label=f"{agg_display} (AUC = {data['auc']:.3f})",
+        )
 
     # Diagonal reference
     ax.plot([0, 1], [0, 1], color="grey", lw=2, linestyle=":")
@@ -122,7 +161,8 @@ def evaluate_roc(merged_df: pd.DataFrame,
                  score_columns: List[str],
                  title: str = "ROC Curves — QC Methods & EQAF",
                  output_path: Optional[str] = None,
-                 label_map: Optional[Dict[str, str]] = None) -> Dict[str, Dict]:
+                 label_map: Optional[Dict[str, str]] = None,
+                 style_mode: str = "color") -> Dict[str, Dict]:
     """End-to-end ROC evaluation: build ground truth, compute ROC, plot & save.
 
     Args:
@@ -136,6 +176,7 @@ def evaluate_roc(merged_df: pd.DataFrame,
         output_path: Destination PNG path (optional).
         label_map: Optional mapping of score column name -> display label
             for chart legends.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Dict mapping score_name -> {fpr, tpr, thresholds, auc}.
@@ -165,8 +206,13 @@ def evaluate_roc(merged_df: pd.DataFrame,
         scores = eval_df[col].values
         roc_results[col] = compute_roc_data(y_true.values, scores)
 
-    saved_path = plot_roc_curves(roc_results, title=title, output_path=output_path,
-                                   label_map=label_map)
+    saved_path = plot_roc_curves(
+        roc_results,
+        title=title,
+        output_path=output_path,
+        label_map=label_map,
+        style_mode=style_mode,
+    )
     print(f"ROC curve saved to: {saved_path}")
 
     # Print AUC summary

@@ -129,6 +129,7 @@ def plot_performance(
     title: str = "Performance Comparison of Detection Methods",
     output_path: Optional[str] = None,
     figsize: Tuple[int, int] = (16, 12),
+    style_mode: str = "color",
 ) -> str:
     """Create a 2×2 figure with Recall, Specificity, Precision, and F1.
 
@@ -143,6 +144,7 @@ def plot_performance(
         title: Super-title for the figure.
         output_path: Destination PNG path.
         figsize: Figure size in inches.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG.
@@ -157,6 +159,7 @@ def plot_performance(
 
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     fig.suptitle(title, fontsize=40, fontweight="bold", y=0.98)
+    is_gray = style_mode == "gray"
 
     # Color palette
     color_tp = "#4CAF50"   # green
@@ -165,22 +168,35 @@ def plot_performance(
     color_tn = "#00838F"   # teal
     color_f1 = "#9E9E9E"   # grey
 
+    if is_gray:
+        color_tp = "#d9d9d9"
+        color_fn = "#ffffff"
+        color_fp = "#bfbfbf"
+        color_tn = "#8c8c8c"
+        color_f1 = "#a6a6a6"
+
+    # Simplified grayscale patterns:
+    # - Use exactly two hatches across Recall/Specificity/Precision
+    # - Keep F1 as plain gray bars (no hatch)
+    hatch_primary = "///" if is_gray else None
+    hatch_secondary = "..." if is_gray else None
+
     # ── Recall (top-left): stacked FN + TP ──
     ax = axes[0, 0]
     tp_vals = [confusion[m]["TP"] for m in methods]
     fn_vals = [confusion[m]["FN"] for m in methods]
 
-    bars_fn = ax.bar(x, fn_vals, bar_width, label="FN", color=color_fn)
-    bars_tp = ax.bar(x, tp_vals, bar_width, bottom=fn_vals, label="TP", color=color_tp)
+    bars_fn = ax.bar(x, fn_vals, bar_width, label="FN", color=color_fn, edgecolor="black", hatch=hatch_primary)
+    bars_tp = ax.bar(x, tp_vals, bar_width, bottom=fn_vals, label="TP", color=color_tp, edgecolor="black", hatch=hatch_secondary)
 
     # Annotate counts
     for i, (fn_v, tp_v) in enumerate(zip(fn_vals, tp_vals)):
         if fn_v > 0:
             ax.text(x[i], fn_v / 2, str(fn_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
         if tp_v > 0:
             ax.text(x[i], fn_v + tp_v / 2, str(tp_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
 
     ax.set_title("Recall", fontsize=32, fontweight="bold")
     ax.set_xticks(x)
@@ -193,16 +209,16 @@ def plot_performance(
     fp_vals = [confusion[m]["FP"] for m in methods]
     tn_vals = [confusion[m]["TN"] for m in methods]
 
-    bars_fp = ax.bar(x, fp_vals, bar_width, label="FP", color=color_fp)
-    bars_tn = ax.bar(x, tn_vals, bar_width, bottom=fp_vals, label="TN", color=color_tn)
+    bars_fp = ax.bar(x, fp_vals, bar_width, label="FP", color=color_fp, edgecolor="black", hatch=hatch_primary)
+    bars_tn = ax.bar(x, tn_vals, bar_width, bottom=fp_vals, label="TN", color=color_tn, edgecolor="black", hatch=hatch_secondary)
 
     for i, (fp_v, tn_v) in enumerate(zip(fp_vals, tn_vals)):
         if fp_v > 0:
             ax.text(x[i], fp_v / 2, str(fp_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
         if tn_v > 0:
             ax.text(x[i], fp_v + tn_v / 2, str(tn_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
 
     ax.set_title("Specificity", fontsize=32, fontweight="bold")
     ax.set_xticks(x)
@@ -212,16 +228,16 @@ def plot_performance(
 
     # ── Precision (bottom-left): stacked FP + TP ──
     ax = axes[1, 0]
-    bars_fp = ax.bar(x, fp_vals, bar_width, label="FP", color=color_fp)
-    bars_tp = ax.bar(x, tp_vals, bar_width, bottom=fp_vals, label="TP", color=color_tp)
+    bars_fp = ax.bar(x, fp_vals, bar_width, label="FP", color=color_fp, edgecolor="black", hatch=hatch_primary)
+    bars_tp = ax.bar(x, tp_vals, bar_width, bottom=fp_vals, label="TP", color=color_tp, edgecolor="black", hatch=hatch_secondary)
 
     for i, (fp_v, tp_v) in enumerate(zip(fp_vals, tp_vals)):
         if fp_v > 0:
             ax.text(x[i], fp_v / 2, str(fp_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
         if tp_v > 0:
             ax.text(x[i], fp_v + tp_v / 2, str(tp_v), ha="center", va="center",
-                    fontsize=18, fontweight="bold", color="white")
+                    fontsize=18, fontweight="bold", color="black" if is_gray else "white")
 
     ax.set_title("Precision", fontsize=32, fontweight="bold")
     ax.set_xticks(x)
@@ -233,7 +249,7 @@ def plot_performance(
     ax = axes[1, 1]
     f1_vals = [metrics[m]["f1"] * 100 for m in methods]
 
-    bars_f1 = ax.bar(x, f1_vals, bar_width, color=color_f1)
+    bars_f1 = ax.bar(x, f1_vals, bar_width, color=color_f1, edgecolor="black")
 
     for i, f1_v in enumerate(f1_vals):
         ax.text(x[i], f1_v + 1, f"{f1_v:.0f}%", ha="center", va="bottom",
@@ -265,6 +281,7 @@ def evaluate_performance(
     title: str = "Performance Comparison of Detection Methods",
     output_path: Optional[str] = None,
     label_map: Optional[Dict[str, str]] = None,
+    style_mode: str = "color",
 ) -> str:
     """End-to-end performance evaluation: confusion matrix → metrics → plot.
 
@@ -279,6 +296,7 @@ def evaluate_performance(
         output_path: Destination PNG path (optional).
         label_map: Optional mapping of score column name -> display label
             for chart labels.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
@@ -292,6 +310,7 @@ def evaluate_performance(
         metrics=perf_metrics,
         title=title,
         output_path=output_path,
+        style_mode=style_mode,
     )
     print(f"Performance comparison chart saved to: {saved}")
 

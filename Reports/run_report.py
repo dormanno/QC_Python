@@ -2,16 +2,17 @@
 Run QC pipeline with outlier injection and generate ROC evaluation report.
 
 Usage:
-    python Reports/run_report.py [report_type] [label]
+    python Reports/run_report.py [report_type] [color|gray] [label]
     
     report_type: pnl, cds, cdi, pv, slices, or all (default: all)
+    color|gray: Mandatory chart rendering mode
     label: Optional custom label to add to filenames and chart titles
     
 Examples:
-    python Reports/run_report.py                    # run all reports
-    python Reports/run_report.py pnl                # PnL only
-    python Reports/run_report.py pnl "v2.0"         # PnL with label "v2.0"
-    python Reports/run_report.py all "baseline"    # All reports with label "baseline"
+    python Reports/run_report.py all color                 # run all reports in color
+    python Reports/run_report.py pnl gray                  # PnL only in grayscale
+    python Reports/run_report.py pnl gray "v2.0"          # PnL in grayscale with label "v2.0"
+    python Reports/run_report.py all color "baseline"     # All reports with label "baseline"
 """
 
 import os
@@ -104,6 +105,7 @@ def _run_report(
     injector: OutlierInjector,
     report_title: str,
     dataset_name: str,
+    style_mode: str,
     label: str = None,
 ) -> dict:
     """Generic report pipeline: load -> inject -> score -> ROC + supplementary charts.
@@ -116,6 +118,7 @@ def _run_report(
         injector: Pre-configured OutlierInjector subclass instance.
         report_title: Title for the ROC curve plot.
         dataset_name: Dataset identifier used in output filenames.
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     
     Returns:
@@ -182,6 +185,7 @@ def _run_report(
         score_columns=report_score_columns,
         title=report_title,
         output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "roc_curve")),
+        style_mode=style_mode,
     )
 
     # 7. Generate UpSet plot of True Positive intersections
@@ -191,6 +195,7 @@ def _run_report(
         threshold=0.95,
         title=report_title.replace("ROC Curves", "True Positive Intersections"),
         output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "upset_tp")),
+        style_mode=style_mode,
     )
 
     # 8. Generate Performance Comparison chart (Recall, Specificity, Precision, F1)
@@ -200,6 +205,7 @@ def _run_report(
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Performance Comparison"),
         output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "performance")),
+        style_mode=style_mode,
     )
 
     # 9. Generate Recall Heatmap (per injection type)
@@ -209,6 +215,7 @@ def _run_report(
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Recall Heatmap"),
         output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "recall_heatmap")),
+        style_mode=style_mode,
     )
 
     # 10. Method-level charts for multi-family datasets (aggregated method scores + EQAF)
@@ -221,6 +228,7 @@ def _run_report(
             score_columns=methods_score_columns,
             title=report_title + " — Methods",
             output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "roc_curve_methods")),
+            style_mode=style_mode,
         )
         evaluate_upset(
             merged_df=merged,
@@ -228,6 +236,7 @@ def _run_report(
             threshold=0.95,
             title=report_title.replace("ROC Curves", "True Positive Intersections") + " — Methods",
             output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "upset_tp_methods")),
+            style_mode=style_mode,
         )
         evaluate_performance(
             merged_df=merged,
@@ -235,6 +244,7 @@ def _run_report(
             threshold=0.95,
             title=report_title.replace("ROC Curves", "Performance Comparison") + " — Methods",
             output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "performance_methods")),
+            style_mode=style_mode,
         )
         evaluate_recall_heatmap(
             merged_df=merged,
@@ -242,6 +252,7 @@ def _run_report(
             threshold=0.95,
             title=report_title.replace("ROC Curves", "Recall Heatmap") + " — Methods",
             output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "recall_heatmap_methods")),
+            style_mode=style_mode,
         )
         logger.info("Saved method-level charts for multi-family dataset")
 
@@ -267,6 +278,7 @@ def _run_report(
                 title=f"{report_title} — {family_tag}",
                 output_path=fam_roc_path,
                 label_map=fam_label_map,
+                style_mode=style_mode,
             )
             logger.info(f"Saved per-family ROC: {os.path.basename(fam_roc_path)}")
 
@@ -279,16 +291,18 @@ def _run_report(
                 title=report_title.replace("ROC Curves", "Performance Comparison") + f" — {family_tag}",
                 output_path=fam_perf_path,
                 label_map=fam_label_map,
+                style_mode=style_mode,
             )
             logger.info(f"Saved per-family Performance: {os.path.basename(fam_perf_path)}")
 
     return roc_results
 
 
-def run_pnl_report(label: str = None):
+def run_pnl_report(style_mode: str, label: str = None):
     """Run full PnL pipeline: load -> inject -> score -> ROC report.
     
     Args:
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     """
     logger.info("=" * 80)
@@ -306,14 +320,16 @@ def run_pnl_report(label: str = None):
         injector=injector,
         report_title="ROC Curves — PnL",
         dataset_name="pnl",
+        style_mode=style_mode,
         label=label,
     )
 
 
-def run_cds_report(label: str = None):
+def run_cds_report(style_mode: str, label: str = None):
     """Run full CDS pipeline: load -> inject -> score -> ROC report.
     
     Args:
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     """
     logger.info("=" * 80)
@@ -331,14 +347,16 @@ def run_cds_report(label: str = None):
         injector=injector,
         report_title="ROC Curves — Credit Delta Single (CDS)",
         dataset_name="cds",
+        style_mode=style_mode,
         label=label,
     )
 
 
-def run_cdi_report(label: str = None):
+def run_cdi_report(style_mode: str, label: str = None):
     """Run full CDI pipeline: load -> inject -> score -> ROC report.
     
     Args:
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     """
     logger.info("=" * 80)
@@ -356,14 +374,16 @@ def run_cdi_report(label: str = None):
         injector=injector,
         report_title="ROC Curves — Credit Delta Index (CDI)",
         dataset_name="cdi",
+        style_mode=style_mode,
         label=label,
     )
 
 
-def run_pv_report(label: str = None):
+def run_pv_report(style_mode: str, label: str = None):
     """Run full PV pipeline: load -> inject -> score -> ROC report.
     
     Args:
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     """
     logger.info("=" * 80)
@@ -381,14 +401,16 @@ def run_pv_report(label: str = None):
         injector=injector,
         report_title="ROC Curves — PV (Present Value)",
         dataset_name="pv",
+        style_mode=style_mode,
         label=label,
     )
 
 
-def run_pnl_slices_report(label: str = None):
+def run_pnl_slices_report(style_mode: str, label: str = None):
     """Run full PnL Slices pipeline: load -> inject -> score -> ROC report.
     
     Args:
+        style_mode: Chart style mode ("color" or "gray").
         label: Optional label to add to filenames and chart titles.
     """
     logger.info("=" * 80)
@@ -406,6 +428,7 @@ def run_pnl_slices_report(label: str = None):
         injector=injector,
         report_title="ROC Curves — PnL Slices",
         dataset_name="pnl_slices",
+        style_mode=style_mode,
         label=label,
     )
 
@@ -415,6 +438,7 @@ if __name__ == "__main__":
     
     # Default: run all five reports
     reports_to_run = ["pnl", "cds", "cdi", "pv", "slices"]
+    style_mode = None
     label = None
     
     # Check for command-line argument to run specific report
@@ -433,7 +457,7 @@ if __name__ == "__main__":
         elif arg in ["both", "all"]:
             reports_to_run = ["pnl", "cds", "cdi", "pv", "slices"]
         else:
-            print(f"Usage: python Reports/run_report.py [report_type] [label]")
+            print(f"Usage: python Reports/run_report.py [report_type] [color|gray] [label]")
             print(f"  report_type:")
             print(f"    pnl/profit     - Run PnL report only")
             print(f"    cds/single     - Run Credit Delta Single report only")
@@ -441,47 +465,70 @@ if __name__ == "__main__":
             print(f"    pv/present     - Run Present Value report only")
             print(f"    slices/pnl_slices - Run PnL Slices report only")
             print(f"    all            - Run all reports (default)")
+            print(f"  color|gray:")
+            print(f"    color          - Use current color styling")
+            print(f"    gray/grayscale/greyscale/mono/monochrome - Use grayscale-friendly patterns")
             print(f"  label: Optional custom label to add to filenames and chart titles")
             sys.exit(1)
+
+    if len(sys.argv) < 3:
+        print(f"Usage: python Reports/run_report.py [report_type] [color|gray] [label]")
+        print("Error: missing mandatory rendering mode argument (color|gray)")
+        sys.exit(1)
+
+    mode_arg = sys.argv[2].strip().lower()
+    gray_aliases = {"gray", "grey", "grayscale", "greyscale", "mono", "monochrome"}
+    color_aliases = {"color", "colour"}
+    if mode_arg in gray_aliases:
+        style_mode = "gray"
+    elif mode_arg in color_aliases:
+        style_mode = "color"
+    else:
+        print(f"Usage: python Reports/run_report.py [report_type] [color|gray] [label]")
+        print(f"Error: unsupported rendering mode '{sys.argv[2]}'.")
+        print("Accepted values: color, colour, gray, grey, grayscale, greyscale, mono, monochrome")
+        sys.exit(1)
+
+    logger.info(f"Using chart mode: '{style_mode}'")
     
     # Check for optional label parameter
-    if len(sys.argv) > 2:
-        label = sys.argv[2]
+    if len(sys.argv) > 3:
+        label = sys.argv[3]
         logger.info(f"Using label: '{label}'")
     
     results = {}
     
     if "pnl" in reports_to_run:
         try:
-            results["pnl"] = run_pnl_report(label=label)
+            results["pnl"] = run_pnl_report(style_mode=style_mode, label=label)
             logger.info("PnL report completed successfully\n")
         except Exception as e:
             logger.error(f"PnL report failed: {e}", exc_info=True)
 
     if "cds" in reports_to_run:
         try:
-            results["cds"] = run_cds_report(label=label)
+            results["cds"] = run_cds_report(style_mode=style_mode, label=label)
             logger.info("CDS report completed successfully\n")
         except Exception as e:
             logger.error(f"CDS report failed: {e}", exc_info=True)
     
     if "cdi" in reports_to_run:
         try:
-            results["cdi"] = run_cdi_report(label=label)
+            results["cdi"] = run_cdi_report(style_mode=style_mode, label=label)
             logger.info("CDI report completed successfully\n")
         except Exception as e:
             logger.error(f"CDI report failed: {e}", exc_info=True)
     
     if "pv" in reports_to_run:
         try:
-            results["pv"] = run_pv_report(label=label)
+            results["pv"] = run_pv_report(style_mode=style_mode, label=label)
             logger.info("PV report completed successfully\n")
         except Exception as e:
             logger.error(f"PV report failed: {e}", exc_info=True)
     
     if "slices" in reports_to_run:
         try:
-            results["slices"] = run_pnl_slices_report(label=label)
+            results["slices"] = run_pnl_slices_report(style_mode=style_mode, label=label)
             logger.info("PnL Slices report completed successfully\n")
         except Exception as e:
             logger.error(f"PnL Slices report failed: {e}", exc_info=True)

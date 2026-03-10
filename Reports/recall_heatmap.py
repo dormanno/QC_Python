@@ -12,7 +12,6 @@ from typing import List, Optional, Dict
 
 import numpy as np
 import pandas as pd
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
@@ -115,6 +114,7 @@ def plot_recall_heatmap(
     title: str = "Recall Heatmap",
     output_path: Optional[str] = None,
     figsize: tuple = (14, 6),
+    style_mode: str = "color",
 ) -> str:
     """Plot a colour-coded Recall heatmap and save as PNG.
 
@@ -127,20 +127,29 @@ def plot_recall_heatmap(
         output_path: Destination PNG path.  If None, saves to
             ``Reports/recall_heatmap.png`` relative to this file.
         figsize: Figure size in inches.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
     """
     fig, ax = plt.subplots(figsize=figsize)
-
-    # Build a red-to-green colormap
-    cmap = mcolors.LinearSegmentedColormap.from_list(
-        "red_green", ["#d32f2f", "#ff9800", "#4CAF50"], N=256
-    )
+    is_gray = style_mode == "gray"
 
     data = recall_df.values.astype(float)
 
-    im = ax.imshow(data, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+    if is_gray:
+        cmap_gray = mcolors.LinearSegmentedColormap.from_list(
+            "white_to_darkgray", ["#ffffff", "#404040"], N=256
+        )
+        cmap_gray = cmap_gray.copy()
+        cmap_gray.set_bad(color="#e0e0e0")
+        masked = np.ma.masked_invalid(data)
+        ax.imshow(masked, cmap=cmap_gray, vmin=0, vmax=1, aspect="auto")
+    else:
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "red_green", ["#d32f2f", "#ff9800", "#4CAF50"], N=256
+        )
+        ax.imshow(data, cmap=cmap, vmin=0, vmax=1, aspect="auto")
 
     # Axis labels
     ax.set_xticks(np.arange(len(recall_df.columns)))
@@ -154,11 +163,13 @@ def plot_recall_heatmap(
             val = data[i, j]
             if np.isnan(val):
                 text = "N/A"
-                color = "grey"
+                color = "black"
             else:
                 text = f"{val:.0%}"
-                # Use white text for readability on dark backgrounds
-                color = "white" if val < 0.75 else "white"
+                if is_gray:
+                    color = "white" if val >= 0.6 else "black"
+                else:
+                    color = "white"
             ax.text(j, i, text, ha="center", va="center",
                     fontsize=16, fontweight="bold", color=color)
 
@@ -181,6 +192,7 @@ def evaluate_recall_heatmap(
     threshold: float = 0.95,
     title: str = "Recall Heatmap",
     output_path: Optional[str] = None,
+    style_mode: str = "color",
 ) -> str:
     """End-to-end recall heatmap evaluation: compute recall → plot heatmap.
 
@@ -193,6 +205,7 @@ def evaluate_recall_heatmap(
         threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot title.
         output_path: Destination PNG path (optional).
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
@@ -205,6 +218,7 @@ def evaluate_recall_heatmap(
         recall_df=recall_df,
         title=title,
         output_path=output_path,
+        style_mode=style_mode,
     )
     print(f"Recall heatmap saved to: {saved}")
 

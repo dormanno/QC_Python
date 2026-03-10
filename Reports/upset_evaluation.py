@@ -113,6 +113,7 @@ def plot_upset_true_positives(
     title: str = "UpSet Plot of True Positive Intersections Across Detection Methods",
     output_path: Optional[str] = None,
     figsize: tuple = (14, 8),
+    style_mode: str = "color",
 ) -> str:
     """Create and save an UpSet plot of True Positive detections.
 
@@ -124,6 +125,7 @@ def plot_upset_true_positives(
         output_path: Destination PNG path.  Defaults to
             ``Reports/upset_true_positives.png``.
         figsize: Figure size in inches.
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
@@ -146,11 +148,40 @@ def plot_upset_true_positives(
 
     fig_obj = plt.figure(figsize=figsize)
     axes_dict = upset.plot(fig=fig_obj)
+    is_gray = style_mode == "gray"
 
     # Manually annotate stacked bars with total counts
     stacked_ax_key = [k for k in axes_dict if k not in ("intersections", "matrix", "totals", "shading")]
     if stacked_ax_key:
         ax_stacked = axes_dict[stacked_ax_key[0]]
+
+        if is_gray:
+            hatch_cycle = ["", "///", "\\\\", "xxx", "...", "+++", "***"]
+            legend = ax_stacked.get_legend()
+            hatch_by_color: Dict[tuple, str] = {}
+
+            for patch in ax_stacked.patches:
+                rgba = patch.get_facecolor()
+                color_key = tuple(np.round(np.array(rgba), 3))
+                if color_key not in hatch_by_color:
+                    hatch_by_color[color_key] = hatch_cycle[len(hatch_by_color) % len(hatch_cycle)]
+                patch.set_edgecolor("black")
+                patch.set_facecolor("white")
+                patch.set_hatch(hatch_by_color[color_key])
+
+            if legend is not None:
+                handles = getattr(legend, "legend_handles", None)
+                if handles is None:
+                    handles = getattr(legend, "legendHandles", [])
+                for handle in handles:
+                    handle_rgba = handle.get_facecolor()
+                    if isinstance(handle_rgba, np.ndarray) and handle_rgba.ndim > 1:
+                        handle_rgba = handle_rgba[0]
+                    color_key = tuple(np.round(np.array(handle_rgba), 3))
+                    handle.set_facecolor("white")
+                    handle.set_edgecolor("black")
+                    handle.set_hatch(hatch_by_color.get(color_key, hatch_cycle[0]))
+
         # Compute total height per bar position from stacked patches
         bar_totals: Dict[float, float] = {}
         for bar in ax_stacked.patches:
@@ -195,6 +226,7 @@ def evaluate_upset(
     threshold: float = 0.95,
     title: str = "UpSet Plot of True Positive Intersections Across Detection Methods",
     output_path: Optional[str] = None,
+    style_mode: str = "color",
 ) -> str:
     """End-to-end UpSet evaluation: build data, plot & save.
 
@@ -207,6 +239,7 @@ def evaluate_upset(
         threshold: Percentile (0-1) for adaptive threshold per score (default 0.95).
         title: Plot title.
         output_path: Destination PNG path (optional).
+        style_mode: Chart style mode ("color" or "gray").
 
     Returns:
         Absolute path to the saved PNG file.
@@ -217,6 +250,7 @@ def evaluate_upset(
         threshold=threshold,
         title=title,
         output_path=output_path,
+        style_mode=style_mode,
     )
     print(f"UpSet plot saved to: {saved}")
 
