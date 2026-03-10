@@ -59,43 +59,41 @@ def _sanitize_token(value: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_-]', '_', value.strip())
 
 
-def _get_next_run_number(timestamp: str, dataset_name: str, label: str = None) -> int:
-    """Get next run number for the given day/dataset/label combination."""
-    safe_dataset = _sanitize_token(dataset_name)
+def _get_next_run_number(timestamp: str, label: str = None) -> int:
+    """Get next run number by scanning existing run subfolders under REPORT_OUTPUT_DIR."""
     safe_label = _sanitize_token(label) if label else None
-
     if safe_label:
-        pattern = os.path.join(REPORT_OUTPUT_DIR, f"{timestamp}_*_{safe_label}_{safe_dataset}_*.png")
-        run_regex = rf"^{re.escape(timestamp)}_(\d+)_{re.escape(safe_label)}_{re.escape(safe_dataset)}_.*\.png$"
+        run_regex = rf"^{re.escape(timestamp)}_(\d+)_{re.escape(safe_label)}$"
     else:
-        pattern = os.path.join(REPORT_OUTPUT_DIR, f"{timestamp}_*_{safe_dataset}_*.png")
-        run_regex = rf"^{re.escape(timestamp)}_(\d+)_{re.escape(safe_dataset)}_.*\.png$"
+        run_regex = rf"^{re.escape(timestamp)}_(\d+)$"
 
-    existing_files = glob.glob(pattern)
     run_numbers = []
-    for filepath in existing_files:
-        basename = os.path.basename(filepath)
-        match = re.match(run_regex, basename)
-        if match:
-            run_numbers.append(int(match.group(1)))
+    if os.path.isdir(REPORT_OUTPUT_DIR):
+        for name in os.listdir(REPORT_OUTPUT_DIR):
+            if os.path.isdir(os.path.join(REPORT_OUTPUT_DIR, name)):
+                match = re.match(run_regex, name)
+                if match:
+                    run_numbers.append(int(match.group(1)))
 
     return max(run_numbers, default=0) + 1
 
 
-def _build_report_filename(
-    timestamp: str,
-    run_number: int,
-    dataset_name: str,
-    chart_type: str,
-    label: str = None,
-) -> str:
-    """Build report filename in format: date_run_optionalLabel_dataSetName_chartType.png."""
-    safe_dataset = _sanitize_token(dataset_name)
-    safe_chart = _sanitize_token(chart_type)
+def _build_run_folder_name(timestamp: str, run_number: int, label: str = None) -> str:
+    """Build run output subfolder name: date_runNumber[_label]."""
     if label:
         safe_label = _sanitize_token(label)
-        return f"{timestamp}_{run_number}_{safe_label}_{safe_dataset}_{safe_chart}.png"
-    return f"{timestamp}_{run_number}_{safe_dataset}_{safe_chart}.png"
+        return f"{timestamp}_{run_number}_{safe_label}"
+    return f"{timestamp}_{run_number}"
+
+
+def _build_report_filename(dataset_name: str, chart_type: str) -> str:
+    """Build report filename: dataSetName_chartType.png.
+
+    Date, run number and label are encoded in the parent run folder name.
+    """
+    safe_dataset = _sanitize_token(dataset_name)
+    safe_chart = _sanitize_token(chart_type)
+    return f"{safe_dataset}_{safe_chart}.png"
 
 
 def _run_report(
@@ -169,80 +167,85 @@ def _run_report(
         report_score_columns = engine_preset.get_score_columns(include_family_scores=False)
         report_score_columns = [c for c in report_score_columns if c != qc_column.QC_FLAG]
 
-    # 5. Build naming context (date + run number + optional label)
+    # 5. Build naming context — create a dedicated run subfolder
     os.makedirs(REPORT_OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d")
-    run_number = _get_next_run_number(timestamp=timestamp, dataset_name=dataset_name, label=label)
+    run_number = _get_next_run_number(timestamp=timestamp, label=label)
+    run_folder = _build_run_folder_name(timestamp, run_number, label)
+    run_output_dir = os.path.join(REPORT_OUTPUT_DIR, run_folder)
+    os.makedirs(run_output_dir, exist_ok=True)
+    logger.info(f"Run output folder: {run_folder}")
 
     # 6. Generate ROC report
-    roc_filename = _build_report_filename(
-        timestamp=timestamp,
-        run_number=run_number,
-        dataset_name=dataset_name,
-        chart_type="roc_curve",
-        label=label,
-    )
-    roc_png_path = os.path.join(REPORT_OUTPUT_DIR, roc_filename)
-
     roc_results = evaluate_roc(
         merged_df=merged,
         score_columns=report_score_columns,
         title=report_title,
-        output_path=roc_png_path,
+        output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "roc_curve")),
     )
 
     # 7. Generate UpSet plot of True Positive intersections
-    upset_filename = _build_report_filename(
-        timestamp=timestamp,
-        run_number=run_number,
-        dataset_name=dataset_name,
-        chart_type="upset_tp",
-        label=label,
-    )
-    upset_png_path = os.path.join(REPORT_OUTPUT_DIR, upset_filename)
     evaluate_upset(
         merged_df=merged,
         score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "True Positive Intersections"),
-        output_path=upset_png_path,
+        output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "upset_tp")),
     )
 
     # 8. Generate Performance Comparison chart (Recall, Specificity, Precision, F1)
-    perf_filename = _build_report_filename(
-        timestamp=timestamp,
-        run_number=run_number,
-        dataset_name=dataset_name,
-        chart_type="performance",
-        label=label,
-    )
-    perf_png_path = os.path.join(REPORT_OUTPUT_DIR, perf_filename)
     evaluate_performance(
         merged_df=merged,
         score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Performance Comparison"),
-        output_path=perf_png_path,
+        output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "performance")),
     )
 
     # 9. Generate Recall Heatmap (per injection type)
-    heatmap_filename = _build_report_filename(
-        timestamp=timestamp,
-        run_number=run_number,
-        dataset_name=dataset_name,
-        chart_type="recall_heatmap",
-        label=label,
-    )
-    heatmap_png_path = os.path.join(REPORT_OUTPUT_DIR, heatmap_filename)
     evaluate_recall_heatmap(
         merged_df=merged,
         score_columns=report_score_columns,
         threshold=0.95,
         title=report_title.replace("ROC Curves", "Recall Heatmap"),
-        output_path=heatmap_png_path,
+        output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "recall_heatmap")),
     )
 
-    # 10. Per-family reports (ROC + Performance) — only when multiple families exist
+    # 10. Method-level charts for multi-family datasets (aggregated method scores + EQAF)
+    if has_multiple_families:
+        methods_score_columns = engine_preset.get_score_columns(include_family_scores=False)
+        methods_score_columns = [c for c in methods_score_columns if c != qc_column.QC_FLAG]
+
+        evaluate_roc(
+            merged_df=merged,
+            score_columns=methods_score_columns,
+            title=report_title + " — Methods",
+            output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "roc_curve_methods")),
+        )
+        evaluate_upset(
+            merged_df=merged,
+            score_columns=methods_score_columns,
+            threshold=0.95,
+            title=report_title.replace("ROC Curves", "True Positive Intersections") + " — Methods",
+            output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "upset_tp_methods")),
+        )
+        evaluate_performance(
+            merged_df=merged,
+            score_columns=methods_score_columns,
+            threshold=0.95,
+            title=report_title.replace("ROC Curves", "Performance Comparison") + " — Methods",
+            output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "performance_methods")),
+        )
+        evaluate_recall_heatmap(
+            merged_df=merged,
+            score_columns=methods_score_columns,
+            threshold=0.95,
+            title=report_title.replace("ROC Curves", "Recall Heatmap") + " — Methods",
+            output_path=os.path.join(run_output_dir, _build_report_filename(dataset_name, "recall_heatmap_methods")),
+        )
+        logger.info("Saved method-level charts for multi-family dataset")
+
+    # 11. Per-family reports (ROC + Performance) — only when multiple families exist
     if has_multiple_families:
         for family in families:
             family_score_cols = engine_preset.get_family_score_columns(family)
@@ -257,43 +260,27 @@ def _run_report(
             }
 
             # 9a. Per-family ROC
-            fam_roc_filename = _build_report_filename(
-                timestamp=timestamp,
-                run_number=run_number,
-                dataset_name=family_dataset_name,
-                chart_type="roc_curve",
-                label=label,
-            )
-            fam_roc_path = os.path.join(REPORT_OUTPUT_DIR, fam_roc_filename)
-            fam_roc_title = f"{report_title} — {family_tag}"
+            fam_roc_path = os.path.join(run_output_dir, _build_report_filename(family_dataset_name, "roc_curve"))
             evaluate_roc(
                 merged_df=merged,
                 score_columns=family_score_cols,
-                title=fam_roc_title,
+                title=f"{report_title} — {family_tag}",
                 output_path=fam_roc_path,
                 label_map=fam_label_map,
             )
-            logger.info(f"Saved per-family ROC: {fam_roc_filename}")
+            logger.info(f"Saved per-family ROC: {os.path.basename(fam_roc_path)}")
 
             # 9b. Per-family Performance
-            fam_perf_filename = _build_report_filename(
-                timestamp=timestamp,
-                run_number=run_number,
-                dataset_name=family_dataset_name,
-                chart_type="performance",
-                label=label,
-            )
-            fam_perf_path = os.path.join(REPORT_OUTPUT_DIR, fam_perf_filename)
-            fam_perf_title = report_title.replace("ROC Curves", "Performance Comparison") + f" — {family_tag}"
+            fam_perf_path = os.path.join(run_output_dir, _build_report_filename(family_dataset_name, "performance"))
             evaluate_performance(
                 merged_df=merged,
                 score_columns=family_score_cols,
                 threshold=0.95,
-                title=fam_perf_title,
+                title=report_title.replace("ROC Curves", "Performance Comparison") + f" — {family_tag}",
                 output_path=fam_perf_path,
                 label_map=fam_label_map,
             )
-            logger.info(f"Saved per-family Performance: {fam_perf_filename}")
+            logger.info(f"Saved per-family Performance: {os.path.basename(fam_perf_path)}")
 
     return roc_results
 
