@@ -321,13 +321,13 @@ methods_pnl_slices_small = {
 }
 
 methods_pnl_slices_large = {
-    QCMethodDefinitions.ISOLATION_FOREST: 1/5,
-    QCMethodDefinitions.ROBUST_Z: 1/5,
-    QCMethodDefinitions.ROLLING: 1/5,
+    # QCMethodDefinitions.ISOLATION_FOREST: 1/4,
+    QCMethodDefinitions.ROBUST_Z: 1/4,
+    QCMethodDefinitions.ROLLING: 1/4,
     # QCMethodDefinitions.IQR: 1/3,
     # QCMethodDefinitions.LOF: 1/7,
-    QCMethodDefinitions.ECDF: 1/5,
-    QCMethodDefinitions.HAMPEL: 1/5,
+    QCMethodDefinitions.ECDF: 1/4,
+    QCMethodDefinitions.HAMPEL: 1/4,
 }
 
 preset_per_family_pnl_slices = MultiFamilyQCEnginePreset(
